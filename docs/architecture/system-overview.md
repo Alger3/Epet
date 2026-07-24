@@ -28,7 +28,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   subgraph Client[Windows 客户端]
-    Workshop[React 宠物工坊]
+    Workshop[React 角色工坊]
     Overlay[PixiJS 桌宠 WebView]
     Core[Tauri / Rust 核心]
     SQLite[(SQLite)]

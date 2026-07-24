@@ -12,20 +12,20 @@
 
 | 表 | 作用 | 关键约束 |
 |---|---|---|
-| `pets` | 已安装宠物索引 | 包哈希唯一；路径只指向应用数据目录；状态含 installing/ready/deleting/broken |
-| `generation_jobs` | 云端任务本地投影与草稿恢复 | `remote_job_id` 唯一；只接受更高 `version` |
+| `characters` | 已安装角色索引 | `subject_kind` 为 `pet_cat` 或 `human_avatar`；包哈希唯一；状态含 installing/ready/deleting/broken |
+| `generation_jobs` | 云端任务本地投影与草稿恢复 | `remote_job_id` 唯一；`subject_kind` 不可变；只接受更高 `version` |
 | `app_settings` | 版本化设置 | key 白名单；敏感凭据只存引用，不存私钥 |
-| `runtime_state` | 当前宠物、显示器、位置和运行模式 | 单行/明确主键；写入由 Rust 运行状态统一串行化 |
+| `runtime_state` | 当前角色、显示器、位置和运行模式 | `active_character_id`；单行/明确主键；写入由 Rust 运行状态统一串行化 |
 
-宠物大文件不进 SQLite。安装顺序是临时下载/校验 → 内容哈希目录原子移动 → SQLite 事务；升级失败保留旧数据库和资源。
+角色大文件不进 SQLite。安装顺序是临时下载/校验 → 内容哈希目录原子移动 → SQLite 事务；已有 `pets` 行迁移为 `characters` 并标记 `pet_cat`，升级失败保留旧数据库和资源。
 
 ## 服务端 PostgreSQL
 
 | 实体 | 作用 | 关键约束 |
 |---|---|---|
 | devices | 公钥、凭据状态和风险元数据 | 安装 ID 不是凭据；私钥永不上传 |
-| uploads | 上传角色、内容元数据、状态与归属 | 每个任务恰好一张 primary，最多两张补充图 |
-| generation_jobs | 当前权威快照 | 单调 version、合法状态约束、所属设备 |
+| uploads | 上传角色、内容元数据、状态与归属 | `subject_kind` 不可变；每个任务恰好一张 primary，最多两张补充图 |
+| generation_jobs | 当前权威快照 | 单调 version、合法状态约束、所属设备、不可变 `subject_kind` |
 | generation_attempts | 立绘/动作/步骤不可变尝试 | 引用输入、模型、工作流、配置和种子版本 |
 | resources | 对象键、大小、哈希、生命周期类别 | 不保存长期签名 URL |
 | idempotency_records | 设备 + 接口 + 幂等键及请求摘要 | 至少保留 7 天；同键不同体冲突 |

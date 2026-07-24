@@ -76,7 +76,7 @@
 |---|---|
 | 冻结 MVP 决策 | `PLAN.md` 与已接受 ADR |
 | HTTP API | `packages/contracts/openapi/openapi.yaml` |
-| 宠物包与事件结构 | `packages/contracts/schemas/` |
+| 角色包与事件结构 | `packages/contracts/schemas/` |
 | 数据库当前结构 | 版本化迁移；文档只解释意图 |
 | 生产任务状态 | PostgreSQL 任务快照 |
 | 发布是否通过 | 对应发布候选报告和 Gate 证据 |
