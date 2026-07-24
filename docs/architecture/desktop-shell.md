@@ -8,11 +8,11 @@
 
 ## 目的
 
-定义阶段 2 桌面壳的进程、窗口、权限、状态和恢复边界，使工坊、桌宠与托盘共享一个 Rust 事实来源，并可独立验证。
+定义阶段 2 桌面壳的进程、窗口、权限、角色切换、状态和恢复边界，使工坊、Overlay 与托盘共享一个 Rust 事实来源，并可独立验证。
 
 ## 范围
 
-包含 Tauri 进程、React 工坊、PixiJS 桌宠 WebView、系统托盘、单实例、开机启动、SQLite 运行状态和 Windows 多屏坐标恢复。不包含云端 API、宠物包安全加载、完整行为状态机和发布签名。
+包含 Tauri 进程、React 工坊、PixiJS Overlay、内置猫咪/Q版人物、系统托盘、单实例、开机启动、SQLite 运行状态和 Windows 多屏坐标恢复。不包含照片生成云端 API、角色包安全导入、完整行为状态机和发布签名。
 
 ## 组件与依赖
 
@@ -44,7 +44,7 @@ tray menu ───────内部领域调用───┘          │
 
 ## 状态一致性
 
-`runtime_state` 是单行 SQLite 快照，当前 `runtime_version = 2`。写入流程固定为：校验调用者 → 执行原生动作 → SQLite upsert → 更新内存快照 → 广播 `runtime-state-changed` → 同步托盘。失败时返回错误，不由 WebView 猜测成功。
+`runtime_state` 是单行 SQLite 快照，当前 `runtime_version = 3`。`characters` 保存内置角色索引，`active_character_id` 从旧 `active_pet_id` 兼容迁移。写入流程固定为：校验调用者/角色存在性 → 执行原生动作 → SQLite upsert → 更新内存快照 → 广播 `runtime-state-changed` → 同步托盘。失败时返回错误，不由 WebView 猜测成功。
 
 位置写入使用 250 ms generation 防抖。开机启动由操作系统注册项保存，不混入 SQLite；查询与修改仍通过 Rust Command，以便校验只能由工坊调用并同步托盘。
 
@@ -72,7 +72,7 @@ DPI 改变时重新执行恢复；移动/系统重定位后防抖保存。React 
 - 保存位置失败：保留最后成功快照，下一次移动再重试。
 - 原显示器丢失：移动到匹配屏或主屏安全区。
 - 开机启动注册失败：保持原状态并向工坊/托盘记录错误。
-- 内置宠物始终本地可用，不依赖云端。
+- 内置猫咪和原创 Q 版人物始终本地可用，不依赖云端；照片生成入口未配置时保持禁用并显示明确说明。
 
 ## 验证与验收
 

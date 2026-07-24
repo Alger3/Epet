@@ -14,6 +14,47 @@ pub fn get_runtime_state(
 }
 
 #[tauri::command]
+pub fn set_active_character(
+    app: AppHandle,
+    window: WebviewWindow,
+    character_id: String,
+) -> Result<RuntimeState, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    if character_id.len() > 80
+        || !character_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("角色 ID 格式无效".to_owned());
+    }
+
+    let state = app.state::<AppState>();
+    if !state
+        .character_exists(&character_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Err("角色不存在或尚未安装".to_owned());
+    }
+
+    if app.get_webview_window(windows::PET_LABEL).is_none() {
+        windows::recreate_pet_window(&app)?;
+    }
+    windows::pet_window(&app)?
+        .show()
+        .map_err(|error| error.to_string())?;
+
+    let snapshot = state
+        .update(|runtime| {
+            runtime.active_character_id = character_id;
+            runtime.visible = true;
+        })
+        .map_err(|error| error.to_string())?;
+    windows::emit_runtime_state(&app, &snapshot);
+    tray::sync_checks(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn set_pet_visible(
     app: AppHandle,
     window: WebviewWindow,

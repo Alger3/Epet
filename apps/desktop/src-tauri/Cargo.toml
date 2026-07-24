@@ -1,7 +1,7 @@
 [package]
 name = "epet-desktop"
-version = "0.1.0"
-description = "Epet Windows desktop shell"
+version = "0.2.0"
+description = "Epet Windows cat and chibi character desktop companion"
 authors = ["Epet contributors"]
 edition = "2024"
 rust-version = "1.97.1"

@@ -1,7 +1,7 @@
-import petSpriteUrl from "../../../../assets/builtin-pet/cat-idle.png";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useRuntimeState } from "../shared/use-runtime-state";
+import { BUILTIN_CHARACTERS, findCharacter } from "../shared/characters";
 
 interface ToggleProps {
   checked: boolean;
@@ -30,6 +30,7 @@ export function Workshop() {
   const [state, actions, error] = useRuntimeState();
   const [autostart, setAutostart] = useState(false);
   const [autostartError, setAutostartError] = useState<string | null>(null);
+  const activeCharacter = findCharacter(state.activeCharacterId);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -57,24 +58,24 @@ export function Workshop() {
       <aside className="sidebar">
         <div className="brand-mark" aria-hidden="true">E</div>
         <nav aria-label="主要导航">
-          <button className="nav-item nav-item-active" type="button">桌宠</button>
-          <button className="nav-item" disabled type="button">创建宠物</button>
-          <button className="nav-item" disabled type="button">我的宠物</button>
-          <button className="nav-item" disabled type="button">设置</button>
+          <button className="nav-item nav-item-active" type="button">角色主页</button>
+          <button className="nav-item" type="button">内置角色</button>
+          <button className="nav-item" disabled type="button">照片生成</button>
+          <button className="nav-item" type="button">运行设置</button>
         </nav>
-        <span className="phase-badge">阶段 2 · 桌面壳</span>
+        <span className="phase-badge">离线 Alpha · 双角色</span>
       </aside>
 
       <section className="workspace">
         <header className="workspace-header">
           <div>
             <p className="eyebrow">EPET DESKTOP</p>
-            <h1>桌宠运行控制</h1>
-            <p>当前使用内置离线宠物验证窗口、托盘和恢复能力。</p>
+            <h1>桌面角色工坊</h1>
+            <p>选择猫咪或原创 Q 版人物，立即显示到 Windows 桌面并离线运行。</p>
           </div>
           <div className="status-pill">
             <span className={state.visible ? "status-dot status-online" : "status-dot"} />
-            {state.visible ? "桌宠已显示" : "桌宠已隐藏"}
+            {state.visible ? "角色已显示" : "角色已隐藏"}
           </div>
         </header>
 
@@ -85,20 +86,48 @@ export function Workshop() {
         <div className="dashboard-grid">
           <article className="pet-card">
             <div className="pet-preview" aria-hidden="true">
-              <img src={petSpriteUrl} alt="" />
+              <img src={activeCharacter.assetUrl} alt="" />
             </div>
             <div>
-              <p className="eyebrow">内置测试宠物</p>
-              <h2>橘子</h2>
-              <p>无需网络。用于确认桌宠窗口在云端不可用时仍可运行。</p>
+              <p className="eyebrow">当前角色 · {activeCharacter.subjectLabel}</p>
+              <h2>{activeCharacter.name}</h2>
+              <p>{activeCharacter.description}</p>
             </div>
             <button
               className="primary-button"
               onClick={() => void actions.setVisible(!state.visible)}
               type="button"
             >
-              {state.visible ? "隐藏桌宠" : "显示到桌面"}
+              {state.visible ? "隐藏角色" : "显示到桌面"}
             </button>
+          </article>
+
+          <article className="character-library-card">
+            <div>
+              <p className="eyebrow">内置角色库</p>
+              <h2>选择陪伴角色</h2>
+              <p className="card-description">无需账号和网络；选择会自动保存，下次启动继续使用。</p>
+            </div>
+            <div className="character-options">
+              {BUILTIN_CHARACTERS.map((character) => {
+                const selected = character.id === state.activeCharacterId;
+                return (
+                  <button
+                    className={`character-option ${selected ? "character-option-active" : ""}`}
+                    key={character.id}
+                    onClick={() => void actions.setActiveCharacter(character.id)}
+                    type="button"
+                  >
+                    <img alt="" src={character.assetUrl} />
+                    <span><strong>{character.name}</strong><small>{character.subjectLabel}</small></span>
+                    <b>{selected ? "使用中" : "选择"}</b>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="availability-note">
+              照片生成需要后续配置独立 AI 服务；本离线版不会上传照片或伪造生成结果。
+            </p>
           </article>
 
           <article className="settings-card">
@@ -146,7 +175,7 @@ export function Workshop() {
           <article className="diagnostics-card">
             <p className="eyebrow">运行快照</p>
             <dl>
-              <div><dt>宠物 ID</dt><dd>{state.activePetId}</dd></div>
+              <div><dt>角色 ID</dt><dd>{state.activeCharacterId}</dd></div>
               <div><dt>显示器</dt><dd>{state.monitorId ?? "等待首次定位"}</dd></div>
               <div><dt>坐标</dt><dd>{state.x === null ? "自动" : `${Math.round(state.x)}, ${Math.round(state.y ?? 0)}`}</dd></div>
               <div><dt>状态版本</dt><dd>v{state.runtimeVersion}</dd></div>

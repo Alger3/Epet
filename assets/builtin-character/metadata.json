@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "character_id": "builtin-forest-guide",
+  "name": "小栎",
+  "subject_kind": "human_avatar",
+  "fictional": true,
+  "adult_character": true,
+  "file": "human-avatar.png",
+  "width": 1254,
+  "height": 1254,
+  "pixel_format": "rgba",
+  "sha256": "976119faa3bdd62169e923f4abcc245a4f0407f08f28e96e193a3184ae33e804",
+  "source": "OpenAI built-in image generation tool",
+  "generated_at": "2026-07-24",
+  "postprocess": "ffmpeg chromakey 0x00ff00 similarity 0.18 blend 0.08",
+  "prompt_summary": "Original fictional adult chibi desktop companion with auburn hair, amber glasses, green jacket and orange scarf on a removable chroma-key background"
+}

@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 2;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 3;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
@@ -15,7 +15,7 @@ pub const MAX_PET_SCALE: f64 = 1.5;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeState {
-    pub active_pet_id: String,
+    pub active_character_id: String,
     pub monitor_id: Option<String>,
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -36,7 +36,7 @@ pub struct RuntimeState {
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
-            active_pet_id: "builtin-orange-tabby".to_owned(),
+            active_character_id: "builtin-orange-tabby".to_owned(),
             monitor_id: None,
             x: None,
             y: None,
@@ -96,9 +96,9 @@ impl AppState {
         connection.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         apply_migrations(&connection)?;
 
-        let runtime = connection
+        let mut runtime = connection
             .query_row(
-                "SELECT active_pet_id, monitor_id, x, y, work_area_width,
+                "SELECT active_character_id, monitor_id, x, y, work_area_width,
                         work_area_height, dpi_scale, pet_logical_size,
                         foot_anchor_x, foot_anchor_y, scale, visible,
                         click_through, paused, last_behavior_state, runtime_version
@@ -106,7 +106,7 @@ impl AppState {
                 [],
                 |row| {
                     Ok(RuntimeState {
-                        active_pet_id: row.get(0)?,
+                        active_character_id: row.get(0)?,
                         monitor_id: row.get(1)?,
                         x: row.get(2)?,
                         y: row.get(3)?,
@@ -127,6 +127,16 @@ impl AppState {
             )
             .optional()?
             .unwrap_or_default();
+
+        let active_character_exists: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM characters WHERE id = ?1)",
+            [&runtime.active_character_id],
+            |row| row.get(0),
+        )?;
+        if !active_character_exists {
+            runtime.active_character_id = RuntimeState::default().active_character_id;
+        }
+        runtime.runtime_version = RUNTIME_SCHEMA_VERSION;
 
         persist_runtime(&connection, &runtime)?;
 
@@ -160,6 +170,17 @@ impl AppState {
         persist_runtime(&database, &next)?;
         *guard = next.clone();
         Ok(next)
+    }
+
+    pub fn character_exists(&self, character_id: &str) -> Result<bool, StateError> {
+        let database = self.database.lock().map_err(|_| StateError::Poisoned)?;
+        database
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM characters WHERE id = ?1)",
+                [character_id],
+                |row| row.get(0),
+            )
+            .map_err(StateError::from)
     }
 
     pub fn next_position_generation(&self) -> u64 {
@@ -203,24 +224,28 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     if version < 2 {
         connection.execute_batch(include_str!("../migrations/0002-monitor-restoration.sql"))?;
     }
+    if version < 3 {
+        connection.execute_batch(include_str!("../migrations/0003-character-library.sql"))?;
+    }
     Ok(())
 }
 
 fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), rusqlite::Error> {
     connection.execute(
         "INSERT INTO runtime_state (
-           singleton, active_pet_id, monitor_id, x, y, work_area_width,
+           singleton, active_pet_id, active_character_id, monitor_id, x, y, work_area_width,
            work_area_height, dpi_scale, pet_logical_size, foot_anchor_x,
            foot_anchor_y, scale, visible, click_through, paused,
            last_behavior_state, runtime_version
          ) VALUES (
-           1, :active_pet_id, :monitor_id, :x, :y, :work_area_width,
+           1, :active_character_id, :active_character_id, :monitor_id, :x, :y, :work_area_width,
            :work_area_height, :dpi_scale, :pet_logical_size, :foot_anchor_x,
            :foot_anchor_y, :scale, :visible, :click_through, :paused,
            :last_behavior_state, :runtime_version
          )
          ON CONFLICT(singleton) DO UPDATE SET
-           active_pet_id = excluded.active_pet_id,
+           active_pet_id = excluded.active_character_id,
+           active_character_id = excluded.active_character_id,
            monitor_id = excluded.monitor_id,
            x = excluded.x,
            y = excluded.y,
@@ -237,7 +262,7 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            last_behavior_state = excluded.last_behavior_state,
            runtime_version = excluded.runtime_version",
         named_params! {
-            ":active_pet_id": state.active_pet_id,
+            ":active_character_id": state.active_character_id,
             ":monitor_id": state.monitor_id,
             ":x": state.x,
             ":y": state.y,

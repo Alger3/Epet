@@ -16,7 +16,7 @@ const SAFE_MARGIN_LOGICAL: f64 = 24.0;
 pub fn show_workshop(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window(WORKSHOP_LABEL)
-        .ok_or_else(|| "宠物工坊窗口不存在".to_owned())?;
+        .ok_or_else(|| "角色工坊窗口不存在".to_owned())?;
     window.unminimize().map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())
@@ -43,7 +43,7 @@ pub fn recreate_pet_window(app: &AppHandle) -> Result<(), String> {
         PET_LABEL,
         WebviewUrl::App("index.html?window=pet-overlay".into()),
     )
-    .title("Epet 桌宠")
+    .title("Epet 桌面角色")
     .inner_size(PET_BASE_SIZE, PET_BASE_SIZE)
     .transparent(true)
     .decorations(false)

@@ -1,6 +1,6 @@
 # Desktop
 
-Windows 桌面客户端，包含 React 工坊、PixiJS 桌宠 WebView 与 Tauri/Rust 受信核心。阶段 2 桌面壳已实现，目标 Windows 的 Gate A 实机验证尚未完成。
+Windows 桌面客户端，包含 React 角色工坊、PixiJS Overlay 与 Tauri/Rust 受信核心。0.2.0 已实现猫咪/Q版人物双角色离线切换；目标 Windows 的 Gate A 实机验证尚未完成。
 
 ## 当前结构
 
@@ -8,9 +8,9 @@ Windows 桌面客户端，包含 React 工坊、PixiJS 桌宠 WebView 与 Tauri/
 desktop/
 ├── src/
 │   ├── main.tsx                 # 按 URL 装配窗口入口
-│   ├── windows/Workshop.tsx     # 工坊与阶段 2 设置
-│   ├── windows/PetOverlay.tsx   # PixiJS 桌宠渲染与拖动
-│   └── shared/                  # 运行状态类型与 IPC hook
+│   ├── windows/Workshop.tsx     # 双角色库与运行设置
+│   ├── windows/PetOverlay.tsx   # PixiJS 动态角色渲染与拖动
+│   └── shared/                  # 角色目录、运行状态与 IPC hook
 ├── src-tauri/
 │   ├── src/commands.rs          # 调用窗口/输入校验和领域入口
 │   ├── src/state.rs             # SQLite 单行快照与迁移执行
@@ -23,8 +23,8 @@ desktop/
 
 ## 边界
 
-- React 只保存页面临时状态；任务、宠物库、设备凭据状态和运行设置从 Rust 读取。
-- 桌宠 WebView 默认无网络、对话框、Shell 和任意文件权限。
+- React 只保存页面临时状态；当前角色、角色库和运行设置从 Rust/版本化内置目录读取。
+- Overlay WebView 默认无网络、对话框、Shell 和任意文件权限。
 - Command 不直接堆叠业务逻辑；校验窗口和输入后调用 domain service。
 - Pixi ticker 只驱动帧动画；行为计时与系统窗口移动使用独立时钟。
 - 本地大文件按内容哈希保存，SQLite 只保存索引和元数据。
@@ -56,8 +56,8 @@ npm run test:e2e
 Windows 完整桌面开发：
 
 ```powershell
-npm run dev:desktop
-npm run build:desktop
+.\scripts\build-windows.ps1
+# 或开发模式：npm run dev:desktop
 ```
 
 Ubuntu 24.04 若要本机构建 Tauri，需先安装：
@@ -73,10 +73,11 @@ sudo apt-get install -y build-essential pkg-config libdbus-1-dev \
 
 ## 状态与迁移
 
-应用数据目录下的 `epet.sqlite3` 保存运行快照。迁移按 `0001-*.sql` 递增并只追加；已进入发布版本的迁移不得编辑或重排。Schema v2 同时保存物理坐标和脚底归一化锚点，React 不自行换算 DPI。
+应用数据目录下的 `epet.sqlite3` 保存运行快照。迁移按 `0001-*.sql` 递增并只追加；已进入发布版本的迁移不得编辑或重排。Schema v3 新增 `characters` 与 `active_character_id`，并从旧 `active_pet_id` 兼容迁移；React 不自行换算 DPI。
 
 ## 相关文档
 
 - [桌面壳架构](../../docs/architecture/desktop-shell.md)
 - [Command 登记](../../docs/architecture/tauri-command-registry.md)
 - [阶段 2 测试计划](../../docs/testing/phase-2-desktop-shell-test-plan.md)
+- [Windows 离线 Alpha](../../docs/release/windows-offline-alpha.md)

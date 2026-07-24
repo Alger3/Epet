@@ -13,6 +13,7 @@ const isTauriRuntime = (): boolean => "__TAURI_INTERNALS__" in window;
 type RuntimeCommand =
   | "set_pet_visible"
   | "set_paused"
+  | "set_active_character"
   | "set_click_through"
   | "reset_pet_position"
   | "adjust_pet_scale"
@@ -21,6 +22,7 @@ type RuntimeCommand =
 
 export interface RuntimeActions {
   setVisible(visible: boolean): Promise<void>;
+  setActiveCharacter(characterId: string): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
   setClickThrough(clickThrough: boolean): Promise<void>;
   resetPosition(): Promise<void>;
@@ -88,6 +90,12 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
   const actions: RuntimeActions = {
     setVisible: (visible) =>
       execute("set_pet_visible", { visible }, (current) => ({ ...current, visible })),
+    setActiveCharacter: (characterId) =>
+      execute("set_active_character", { characterId }, (current) => ({
+        ...current,
+        activeCharacterId: characterId,
+        visible: true,
+      })),
     setPaused: (paused) =>
       execute("set_paused", { paused }, (current) => ({
         ...current,

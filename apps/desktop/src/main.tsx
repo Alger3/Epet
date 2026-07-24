@@ -10,7 +10,7 @@ const windowKind = params.get("window");
 const isPetOverlay = windowKind === "pet-overlay";
 
 document.documentElement.dataset.window = isPetOverlay ? "pet-overlay" : "workshop";
-document.title = isPetOverlay ? "Epet 桌宠" : "Epet 宠物工坊";
+document.title = isPetOverlay ? "Epet 桌面角色" : "Epet 角色工坊";
 
 const root = document.getElementById("root");
 

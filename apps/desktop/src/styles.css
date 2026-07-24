@@ -394,3 +394,111 @@ html[data-window="pet-overlay"] #root {
     animation: none;
   }
 }
+
+.character-library-card {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgb(45 72 57 / 10%);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 18px 50px rgb(42 62 50 / 7%);
+}
+
+.character-library-card h2 {
+  margin: 4px 0 0;
+  color: #1c2c24;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 25px;
+  font-weight: 600;
+}
+
+.card-description,
+.availability-note {
+  margin: 8px 0 0;
+  color: #6e7b74;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.character-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.character-option {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dfe5dc;
+  border-radius: 14px;
+  background: #fbfcf9;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+
+.character-option:hover {
+  border-color: #d19772;
+  transform: translateY(-1px);
+}
+
+.character-option-active {
+  border-color: #c96c3f;
+  background: #fff5ec;
+}
+
+.character-option img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #edf1e8;
+}
+
+.character-option span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.character-option strong,
+.character-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-option small {
+  color: #7c8881;
+}
+
+.character-option b {
+  color: #b65c32;
+  font-size: 12px;
+}
+
+.availability-note {
+  padding: 10px 12px;
+  border: 1px solid #ead7c8;
+  border-radius: 11px;
+  background: #fff8f1;
+}
+
+.pet-overlay-human_avatar .pet-float {
+  animation-duration: 3.4s;
+}
+
+.pet-overlay-human_avatar.pet-pressed .pet-float {
+  transform: rotate(-1.5deg) scale(0.985, 1.015);
+}
+
+@media (max-width: 980px) {
+  .character-options {
+    grid-template-columns: 1fr;
+  }
+}

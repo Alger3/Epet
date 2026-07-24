@@ -1,7 +1,7 @@
 import { Application, Assets, Sprite, Texture } from "pixi.js";
 import { useEffect, useRef, useState } from "react";
 
-import petSpriteUrl from "../../../../assets/builtin-pet/cat-idle.png";
+import { findCharacter } from "../shared/characters";
 import { useRuntimeState } from "../shared/use-runtime-state";
 
 export function PetOverlay() {
@@ -10,6 +10,7 @@ export function PetOverlay() {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const [state, actions] = useRuntimeState();
   const [pressed, setPressed] = useState(false);
+  const character = findCharacter(state.activeCharacterId);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -28,7 +29,7 @@ export function PetOverlay() {
       if (disposed) return;
       host.appendChild(app.canvas);
 
-      const texture = await Assets.load<Texture>(petSpriteUrl);
+      const texture = await Assets.load<Texture>(character.assetUrl);
       if (disposed) return;
 
       const sprite = new Sprite(texture);
@@ -51,11 +52,11 @@ export function PetOverlay() {
       disposed = true;
       app.destroy(true, { children: true });
     };
-  }, []);
+  }, [character.assetUrl]);
 
   return (
     <main
-      className={`pet-overlay ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""}`}
+      className={`pet-overlay pet-overlay-${character.subjectKind} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""}`}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => {
         if (event.button !== 0 || state.clickThrough) return;
@@ -79,7 +80,12 @@ export function PetOverlay() {
         void actions.adjustScale(event.deltaY > 0 ? -0.1 : 0.1);
       }}
     >
-      <div className="pet-float" ref={hostRef} role="img" aria-label="内置橘猫桌面宠物" />
+      <div
+        className="pet-float"
+        ref={hostRef}
+        role="img"
+        aria-label={`${character.name}，${character.subjectLabel}桌面角色`}
+      />
     </main>
   );
 }

@@ -1,10 +1,14 @@
-export const MIN_PET_SCALE = 0.5;
-export const MAX_PET_SCALE = 1.5;
+import { DEFAULT_CHARACTER_ID } from "./characters";
+
+export const MIN_CHARACTER_SCALE = 0.5;
+export const MAX_CHARACTER_SCALE = 1.5;
+export const MIN_PET_SCALE = MIN_CHARACTER_SCALE;
+export const MAX_PET_SCALE = MAX_CHARACTER_SCALE;
 
 export type BehaviorState = "idle" | "drag" | "paused";
 
 export interface RuntimeState {
-  activePetId: string;
+  activeCharacterId: string;
   monitorId: string | null;
   x: number | null;
   y: number | null;
@@ -23,7 +27,7 @@ export interface RuntimeState {
 }
 
 export const DEFAULT_RUNTIME_STATE: RuntimeState = {
-  activePetId: "builtin-orange-tabby",
+  activeCharacterId: DEFAULT_CHARACTER_ID,
   monitorId: null,
   x: null,
   y: null,
@@ -38,7 +42,7 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   clickThrough: false,
   paused: false,
   lastBehaviorState: "idle",
-  runtimeVersion: 2,
+  runtimeVersion: 3,
 };
 
 export function clampScale(scale: number): number {
@@ -46,5 +50,5 @@ export function clampScale(scale: number): number {
     return DEFAULT_RUNTIME_STATE.scale;
   }
 
-  return Math.min(MAX_PET_SCALE, Math.max(MIN_PET_SCALE, scale));
+  return Math.min(MAX_CHARACTER_SCALE, Math.max(MIN_CHARACTER_SCALE, scale));
 }

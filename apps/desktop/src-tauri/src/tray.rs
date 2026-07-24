@@ -15,11 +15,11 @@ pub struct TrayControls {
 }
 
 pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open-workshop", "打开宠物工坊", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open-workshop", "打开角色工坊", true, None::<&str>)?;
     let visible = CheckMenuItem::with_id(
         app,
         "pet-visible",
-        "显示桌宠",
+        "显示角色",
         true,
         snapshot.visible,
         None::<&str>,
@@ -40,7 +40,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
         snapshot.paused,
         None::<&str>,
     )?;
-    let reset = MenuItem::with_id(app, "reset-position", "重置宠物位置", true, None::<&str>)?;
+    let reset = MenuItem::with_id(app, "reset-position", "重置角色位置", true, None::<&str>)?;
     let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(
         app,
@@ -69,7 +69,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
     )?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
-        .tooltip("Epet 桌面宠物")
+        .tooltip("Epet 桌面角色")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {

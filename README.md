@@ -2,7 +2,9 @@
 
 Epet 是一款面向 Windows 的 2D 桌面角色应用。用户使用一张必选主照片和最多两张可选补充照片，生成猫咪或获授权成年人的 Q 版形象；两类主体分别进入专属 AI 流水线，云端统一产出受限的 Sprite Atlas 角色包，桌面端负责安全下载、校验、运行和交互。
 
-当前仓库处于 **阶段 2：桌面壳实现与验证**。内置离线宠物、双窗口、托盘、单实例、SQLite 运行状态和多屏恢复已经进入代码；阶段 0 的 Windows 窗口 Gate A、猫咪 Gate B-P、人物 Gate B-H 以及阶段 1 的 Mock API/基础 CI 尚未完成，Q 版人物目前是已规划范围而非已实现能力。
+当前仓库处于 **阶段 2：桌面壳实现与验证**，并已完成一条可交付的 0.2.0 双角色离线 Alpha：内置橘猫与原创 Q 版成年人、角色库切换、透明 Overlay、托盘、单实例、SQLite v3 持久化、多屏恢复和 NSIS 构建配置已经进入代码。
+
+照片转 Q 版角色、云端 API/Worker、人物 Gate B-H 和 Windows Gate A 实机证据仍未完成。0.2.0 不读取或上传照片，也不会把占位结果描述为 AI 生成成功。
 
 ## 冻结的 MVP 边界
 
@@ -26,7 +28,7 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。用户使用一张必�
 | `packages/contracts/` | OpenAPI、JSON Schema、错误码和黄金样例 |
 | `packages/pet-runtime/` | Sprite Atlas 加载、渲染与行为状态机 |
 | `packages/ui/` | 工坊可复用 UI |
-| `assets/` | 内置测试宠物和动作模板 |
+| `assets/` | 内置测试猫咪、原创 Q 版人物和动作模板 |
 | `infra/` | 本地依赖与各环境部署定义 |
 | `tests/` | 跨模块契约、E2E 与脱敏测试索引 |
 | `docs/` | 架构、产品、隐私、开发、测试、发布与运行手册 |
@@ -53,6 +55,23 @@ PixiJS 桌宠 ├─ Tauri/Rust ─ SQLite + 本地角色资源
 
 详见 [系统架构](docs/architecture/system-overview.md) 与 [安全边界](docs/architecture/security-boundaries.md)。
 
+## Windows 直接使用
+
+在 Windows 11 x64 安装 Node.js、Rust MSVC 和 Visual Studio 2022 C++ Build Tools 后，于 PowerShell 执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-windows.ps1
+```
+
+验证通过的 NSIS 安装包输出到：
+
+```text
+apps\desktop\src-tauri\target\release\bundle\nsis\
+```
+
+也可以手动触发仓库的 `Windows installer` GitHub Actions 工作流并下载 Artifact。完整环境、使用方法、已知限制和实机清单见 [Windows 双角色离线 Alpha](docs/release/windows-offline-alpha.md)。
+
 ## 开发状态与启动
 
 当前可运行的是桌面端切片；API、Worker 与 Mock API 仍是后续阶段工作。推荐 Node.js、Rust 和 Python 版本分别记录在 `.node-version`、`rust-toolchain.toml` 与 `.python-version`。
@@ -65,14 +84,14 @@ npm run test:e2e
 npm run build:desktop
 ```
 
-`dev:web` 在浏览器中预览两个窗口的前端；Windows 上使用 `npm run dev:desktop` 启动完整 Tauri 桌面壳。根命令状态如下：
+`dev:web` 在浏览器中预览角色工坊和 Overlay；Windows 上使用 `npm run dev:desktop` 启动完整 Tauri 桌面壳。根命令状态如下：
 
 | 命令 | 状态 | 说明 |
 |---|---|---|
 | `npm run dev:desktop` | 可用 | 启动 Tauri 主窗口、桌宠窗口和托盘 |
 | `npm run dev:web` | 可用 | 仅浏览器预览 React/PixiJS，不含原生窗口能力 |
-| `npm run test` | 可用 | 桌面状态和壳配置快速测试 |
-| `npm run test:e2e` | 可用 | 当前执行壳契约测试，Windows 交互 E2E 待补 |
+| `npm run test` | 可用 | 角色目录、运行状态和壳配置快速测试 |
+| `npm run test:e2e` | 可用 | 窗口、权限、迁移、切换命令和素材哈希契约测试；Windows 交互 E2E 待补 |
 | `npm run lint` | 可用但依赖平台工具链 | TypeScript 与 Rust 格式/Clippy |
 | `npm run build:desktop` | Windows 可用 | 构建 Windows NSIS；发布签名尚未配置 |
 | `dev:api` / `dev:worker` | 未实现 | 属于后续生成服务阶段，不提供占位成功脚本 |

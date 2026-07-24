@@ -7,6 +7,7 @@
 > 更新触发：新增、删除或扩大任何 Command/capability
 
 所有自定义 Command 都在 Rust 中再次校验调用窗口标签；下表的“调用窗口”是强制授权边界，不是 UI 约定。运行状态变更只有在原生动作和 SQLite 写入成功后才广播。
+| `set_active_character` | `workshop` | 白名单格式 `characterId: string` | 已安装 `characters` 行、Overlay、运行快照 | 校验存在性、激活、显示并落库 | 只记录稳定错误类别 | 迁移/权限/切换测试 |
 
 | Command | 调用窗口 | 输入 Schema | 资源范围 | 副作用 | 脱敏日志 | 测试 |
 |---|---|---|---|---|---|---|
