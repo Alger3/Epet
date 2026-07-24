@@ -1,0 +1,66 @@
+schema_version: 1
+errors:
+  - code: AUTH_INVALID_CREDENTIAL
+    http_status: 401
+    retryable: false
+    user_action: re_register_device
+  - code: AUTH_TOKEN_EXPIRED
+    http_status: 401
+    retryable: true
+    user_action: refresh_device_token
+  - code: RESOURCE_NOT_FOUND
+    http_status: 404
+    retryable: false
+    user_action: return_to_library
+  - code: IDEMPOTENCY_CONFLICT
+    http_status: 409
+    retryable: false
+    user_action: create_new_request
+  - code: UPLOAD_INVALID_CONTENT
+    http_status: 422
+    retryable: false
+    user_action: choose_another_photo
+  - code: UPLOAD_EXPIRED
+    http_status: 410
+    retryable: true
+    user_action: restart_upload
+  - code: GENERATION_INVALID_STATE
+    http_status: 409
+    retryable: false
+    user_action: refresh_job_snapshot
+  - code: GENERATION_VERSION_CONFLICT
+    http_status: 409
+    retryable: true
+    user_action: refresh_job_snapshot
+  - code: GENERATION_QUOTA_EXCEEDED
+    http_status: 429
+    retryable: false
+    user_action: wait_for_quota_reset
+  - code: GENERATION_BUDGET_DISABLED
+    http_status: 503
+    retryable: true
+    user_action: use_local_pets
+  - code: GENERATION_INPUT_REJECTED
+    http_status: 422
+    retryable: false
+    user_action: follow_photo_guidance
+  - code: GENERATION_WORKER_UNAVAILABLE
+    http_status: 503
+    retryable: true
+    user_action: keep_job_for_recovery
+  - code: ARTIFACT_NOT_READY
+    http_status: 409
+    retryable: true
+    user_action: refresh_job_snapshot
+  - code: PET_PACKAGE_INTEGRITY_FAILED
+    http_status: 422
+    retryable: true
+    user_action: redownload_artifact
+  - code: PET_PACKAGE_UNSUPPORTED_VERSION
+    http_status: 422
+    retryable: false
+    user_action: update_client
+  - code: INTERNAL_ERROR
+    http_status: 500
+    retryable: true
+    user_action: retry_later

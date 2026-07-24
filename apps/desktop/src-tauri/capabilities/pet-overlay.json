@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pet-overlay",
+  "description": "The pet overlay may invoke narrowly validated app commands and receive state events only.",
+  "windows": ["pet-overlay"],
+  "permissions": ["core:event:default"]
+}

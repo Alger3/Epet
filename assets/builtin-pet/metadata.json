@@ -1,0 +1,15 @@
+{
+  "asset_id": "builtin-orange-tabby",
+  "version": "1.0.0",
+  "created_at": "2026-07-24T00:00:00Z",
+  "source_type": "ai_generated",
+  "generator": "OpenAI built-in image generation tool",
+  "source_images": [],
+  "prompt": "Original friendly full-body orange tabby cat, polished 2D cartoon game sprite, neutral three-quarter standing pose, entire body and tail visible, flat green chroma-key background, no text or watermark.",
+  "postprocessing": "Green chroma-key removal with soft matte and despill; application icons derived from the transparent result.",
+  "file": "cat-idle.png",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "69d4d4b78490a4432f13c6aa41ff680980d76b11822469c09672b89a46f3c8e7",
+  "distribution": "Bundled offline test pet; no third-party source image was used. Repository-wide licensing must be selected before public distribution."
+}

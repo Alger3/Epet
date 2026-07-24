@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "package_version": "1.0.0",
+  "min_runtime_version": "0.1.0",
+  "pet_id": "pet_example01",
+  "name": "Example Cat",
+  "species": "cat",
+  "renderer": "sprite_atlas",
+  "created_at": "2026-07-24T00:00:00Z",
+  "canvas": { "width": 512, "height": 512 },
+  "atlas": {
+    "image": "atlas/pet.webp",
+    "data": "atlas/pet.json",
+    "max_texture_size": 4096
+  },
+  "default_scale": 0.75,
+  "anchors": {
+    "foot": [0.5, 0.92],
+    "drag": [0.5, 0.35]
+  },
+  "hitboxes": [
+    { "id": "body", "shape": "ellipse", "x": 0.18, "y": 0.2, "w": 0.64, "h": 0.7 }
+  ],
+  "actions": {
+    "idle": {
+      "frames": ["idle_000"],
+      "frame_duration_ms": [100],
+      "loop": true,
+      "fallback": null
+    }
+  },
+  "generation": {
+    "pipeline_version": "1.0.0",
+    "template_version": "cat-a-1"
+  },
+  "files": [
+    { "path": "thumbnail.webp", "size": 1, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "atlas/pet.webp", "size": 1, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "atlas/pet.json", "size": 1, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "license.json", "size": 1, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  ]
+}

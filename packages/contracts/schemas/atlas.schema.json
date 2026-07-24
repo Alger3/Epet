@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.epet.invalid/v1/atlas.schema.json",
+  "title": "Epet sprite atlas",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "image", "size", "frames"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "image": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.(png|webp)$" },
+    "size": { "$ref": "#/$defs/size" },
+    "frames": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 10000,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*_[0-9]{3}$" },
+      "additionalProperties": { "$ref": "#/$defs/frame" }
+    }
+  },
+  "$defs": {
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["w", "h"],
+      "properties": {
+        "w": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "h": { "type": "integer", "minimum": 1, "maximum": 4096 }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "y": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "w": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "h": { "type": "integer", "minimum": 1, "maximum": 4096 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame", "rotated", "source_size", "sprite_source"],
+      "properties": {
+        "frame": { "$ref": "#/$defs/rect" },
+        "rotated": { "type": "boolean" },
+        "source_size": { "$ref": "#/$defs/size" },
+        "sprite_source": { "$ref": "#/$defs/rect" }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "workshop",
+  "description": "The workshop may invoke app commands and receive state events, but has no direct filesystem, shell, dialog, or network plugin permission.",
+  "windows": ["workshop"],
+  "permissions": ["core:event:default"]
+}

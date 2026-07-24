@@ -1,0 +1,20 @@
+{
+  "name": "epet",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "engines": {
+    "node": "24.15.0",
+    "npm": "11.12.1"
+  },
+  "scripts": {
+    "dev:desktop": "npm --workspace @epet/desktop run tauri dev",
+    "dev:web": "npm --workspace @epet/desktop run dev",
+    "test": "npm --workspace @epet/desktop run test",
+    "test:e2e": "npm --workspace @epet/desktop run test:e2e",
+    "lint": "npm --workspace @epet/desktop run typecheck && npm --workspace @epet/desktop run lint:rust",
+    "build:desktop": "npm --workspace @epet/desktop run tauri build"
+  }
+}

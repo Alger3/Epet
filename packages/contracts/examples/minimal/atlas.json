@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "image": "pet.webp",
+  "size": { "w": 512, "h": 512 },
+  "frames": {
+    "idle_000": {
+      "frame": { "x": 0, "y": 0, "w": 512, "h": 512 },
+      "rotated": false,
+      "source_size": { "w": 512, "h": 512 },
+      "sprite_source": { "x": 0, "y": 0, "w": 512, "h": 512 }
+    }
+  }
+}

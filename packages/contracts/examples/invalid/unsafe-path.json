@@ -1,0 +1,5 @@
+{
+  "case": "manifest file entry attempts path traversal",
+  "path": "../outside.webp",
+  "expected_error": "PET_PACKAGE_INTEGRITY_FAILED"
+}

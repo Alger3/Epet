@@ -1,0 +1,721 @@
+openapi: 3.1.0
+info:
+  title: Epet API
+  version: 0.1.0
+  description: Draft MVP contract. PostgreSQL snapshots are authoritative; SSE only signals changes.
+servers:
+  - url: https://api.example.invalid
+    description: Placeholder; real environment URLs are injected by deployment configuration.
+tags:
+  - name: Devices
+  - name: Uploads
+  - name: Generations
+paths:
+  /v1/devices/register:
+    post:
+      tags: [Devices]
+      operationId: registerDevice
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegisterRequest'
+      responses:
+        '201':
+          description: Device credential registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/devices/challenge:
+    post:
+      tags: [Devices]
+      operationId: createDeviceChallenge
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceChallengeRequest'
+      responses:
+        '200':
+          description: Single-use, short-lived signing challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceChallengeResponse'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/devices/token:
+    post:
+      tags: [Devices]
+      operationId: issueDeviceToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+      responses:
+        '200':
+          description: Short-lived access token issued after challenge verification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/uploads:
+    post:
+      tags: [Uploads]
+      operationId: createUpload
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUploadRequest'
+      responses:
+        '201':
+          description: Restricted upload session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUploadResponse'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/uploads/{upload_id}/complete:
+    post:
+      tags: [Uploads]
+      operationId: completeUpload
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Object verification accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /v1/uploads/{upload_id}:
+    delete:
+      tags: [Uploads]
+      operationId: deleteUpload
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Deletion accepted.
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/generations:
+    post:
+      tags: [Generations]
+      operationId: createGeneration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGenerationRequest'
+      responses:
+        '201':
+          description: Generation job created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}:
+    get:
+      tags: [Generations]
+      operationId: getGeneration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Authoritative generation snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags: [Generations]
+      operationId: deleteGeneration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Cloud deletion accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/deletions/{request_id}:
+    get:
+      tags: [Generations]
+      operationId: getDeletion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeletionId'
+      responses:
+        '200':
+          description: Current deletion request status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/events:
+    get:
+      tags: [Generations]
+      operationId: streamGenerationEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '200':
+          description: Best-effort change notifications. Re-query snapshot on connect, gaps or reconnect.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/portrait/confirm:
+    post:
+      tags: [Generations]
+      operationId: confirmPortrait
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionCommand'
+      responses:
+        '200':
+          description: Portrait confirmed idempotently.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/portrait/regenerate:
+    post:
+      tags: [Generations]
+      operationId: regeneratePortrait
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionCommand'
+      responses:
+        '202':
+          description: Portrait regeneration accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/actions/{action}/regenerate:
+    post:
+      tags: [Generations]
+      operationId: regenerateAction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/Action'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionCommand'
+      responses:
+        '202':
+          description: Action regeneration accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/cancel:
+    post:
+      tags: [Generations]
+      operationId: cancelGeneration
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionCommand'
+      responses:
+        '202':
+          description: Cancellation accepted or already final.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/artifact:
+    get:
+      tags: [Generations]
+      operationId: getGenerationArtifact
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Short-lived download grant; only available in ready state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_-]+$'
+    UploadId:
+      name: upload_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^upl_[A-Za-z0-9_-]{8,64}$'
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^gen_[A-Za-z0-9_-]{8,64}$'
+    DeletionId:
+      name: request_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^del_[A-Za-z0-9_-]{8,64}$'
+    Action:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [idle, walk, sleep, tap, drag]
+  responses:
+    Problem:
+      description: Stable machine-readable error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    DeviceRegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [public_key, client_version, registration_nonce]
+      properties:
+        public_key:
+          type: string
+          minLength: 32
+          maxLength: 2048
+        client_version:
+          type: string
+          pattern: '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$'
+        registration_nonce:
+          type: string
+          minLength: 32
+          maxLength: 128
+    DeviceChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [credential_id]
+      properties:
+        credential_id:
+          type: string
+          pattern: '^dev_[A-Za-z0-9_-]{8,64}$'
+    DeviceChallengeResponse:
+      type: object
+      additionalProperties: false
+      required: [challenge, expires_at]
+      properties:
+        challenge:
+          type: string
+          minLength: 32
+          maxLength: 512
+        expires_at:
+          type: string
+          format: date-time
+    DeviceTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [credential_id, challenge, signature]
+      properties:
+        credential_id:
+          type: string
+          pattern: '^dev_[A-Za-z0-9_-]{8,64}$'
+        challenge:
+          type: string
+          minLength: 32
+          maxLength: 512
+        signature:
+          type: string
+          minLength: 32
+          maxLength: 2048
+    DeviceTokenResponse:
+      type: object
+      additionalProperties: false
+      required: [credential_id, access_token, expires_at, refresh_credential]
+      properties:
+        credential_id:
+          type: string
+          pattern: '^dev_[A-Za-z0-9_-]{8,64}$'
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        refresh_credential:
+          type: string
+    CreateUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [role, size, mime_type, sha256]
+      properties:
+        role:
+          type: string
+          enum: [primary, side, detail]
+        size:
+          type: integer
+          minimum: 1
+          maximum: 20971520
+        mime_type:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+    CreateUploadResponse:
+      type: object
+      additionalProperties: false
+      required: [upload_id, upload_url, allowed_headers, expires_at, limits]
+      properties:
+        upload_id:
+          type: string
+          pattern: '^upl_[A-Za-z0-9_-]{8,64}$'
+        upload_url:
+          type: string
+          format: uri
+        allowed_headers:
+          type: object
+          additionalProperties:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        limits:
+          type: object
+          additionalProperties: false
+          required: [max_bytes]
+          properties:
+            max_bytes:
+              type: integer
+              minimum: 1
+    UploadSnapshot:
+      type: object
+      additionalProperties: false
+      required: [upload_id, status, version, updated_at]
+      properties:
+        upload_id:
+          type: string
+        status:
+          type: string
+          enum: [created, uploading, verifying, ready, failed, expired, deleted]
+        version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorDetail'
+            - type: 'null'
+    CreateGenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [primary_upload_id, additional_upload_ids, style_id, species]
+      properties:
+        primary_upload_id:
+          type: string
+          pattern: '^upl_[A-Za-z0-9_-]{8,64}$'
+        additional_upload_ids:
+          type: array
+          maxItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^upl_[A-Za-z0-9_-]{8,64}$'
+        style_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        species:
+          type: string
+          const: cat
+    GenerationSnapshot:
+      type: object
+      additionalProperties: false
+      required: [job_id, version, stage, retryable, created_at, updated_at]
+      properties:
+        job_id:
+          type: string
+          pattern: '^gen_[A-Za-z0-9_-]{8,64}$'
+        version:
+          type: integer
+          minimum: 1
+        stage:
+          $ref: '#/components/schemas/GenerationStage'
+        retryable:
+          type: boolean
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+        portrait_preview_url:
+          type: string
+          format: uri
+        confirmation_expires_at:
+          type: string
+          format: date-time
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorDetail'
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GenerationStage:
+      type: string
+      enum: [created, validating, generating_portrait, awaiting_portrait_confirmation, generating_actions, postprocessing, quality_check, packaging, ready, cancel_requested, failed, canceled, expired]
+    VersionCommand:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+    ArtifactResponse:
+      type: object
+      additionalProperties: false
+      required: [download_url, size, sha256, expires_at]
+      properties:
+        download_url:
+          type: string
+          format: uri
+        size:
+          type: integer
+          minimum: 1
+          maximum: 31457280
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        expires_at:
+          type: string
+          format: date-time
+    DeletionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [request_id, status, requested_at]
+      properties:
+        request_id:
+          type: string
+          pattern: '^del_[A-Za-z0-9_-]{8,64}$'
+        status:
+          type: string
+          enum: [requested, processing, completed, failed]
+        requested_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required: [code, params]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+        params:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code, trace_id]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{2,63}$'
+        params:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+        trace_id:
+          type: string
+          minLength: 8
+          maxLength: 128
+security:
+  - bearerAuth: []
