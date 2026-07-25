@@ -21,6 +21,7 @@ export interface RuntimeState {
   scale: number;
   visible: boolean;
   clickThrough: boolean;
+  alwaysOnTop: boolean;
   paused: boolean;
   lastBehaviorState: BehaviorState;
   runtimeVersion: number;
@@ -40,9 +41,10 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   scale: 0.8,
   visible: true,
   clickThrough: false,
+  alwaysOnTop: true,
   paused: false,
   lastBehaviorState: "idle",
-  runtimeVersion: 3,
+  runtimeVersion: 4,
 };
 
 export function clampScale(scale: number): number {

@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 3;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 4;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
@@ -28,6 +28,7 @@ pub struct RuntimeState {
     pub scale: f64,
     pub visible: bool,
     pub click_through: bool,
+    pub always_on_top: bool,
     pub paused: bool,
     pub last_behavior_state: String,
     pub runtime_version: i64,
@@ -49,6 +50,7 @@ impl Default for RuntimeState {
             scale: DEFAULT_PET_SCALE,
             visible: true,
             click_through: false,
+            always_on_top: true,
             paused: false,
             last_behavior_state: "idle".to_owned(),
             runtime_version: RUNTIME_SCHEMA_VERSION,
@@ -101,7 +103,8 @@ impl AppState {
                 "SELECT active_character_id, monitor_id, x, y, work_area_width,
                         work_area_height, dpi_scale, pet_logical_size,
                         foot_anchor_x, foot_anchor_y, scale, visible,
-                        click_through, paused, last_behavior_state, runtime_version
+                        click_through, paused, last_behavior_state, runtime_version,
+                        always_on_top
                  FROM runtime_state WHERE singleton = 1",
                 [],
                 |row| {
@@ -122,6 +125,7 @@ impl AppState {
                         paused: row.get::<_, i64>(13)? != 0,
                         last_behavior_state: row.get(14)?,
                         runtime_version: row.get(15)?,
+                        always_on_top: row.get::<_, i64>(16)? != 0,
                     })
                 },
             )
@@ -227,6 +231,9 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     if version < 3 {
         connection.execute_batch(include_str!("../migrations/0003-character-library.sql"))?;
     }
+    if version < 4 {
+        connection.execute_batch(include_str!("../migrations/0004-always-on-top.sql"))?;
+    }
     Ok(())
 }
 
@@ -236,12 +243,12 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            singleton, active_pet_id, active_character_id, monitor_id, x, y, work_area_width,
            work_area_height, dpi_scale, pet_logical_size, foot_anchor_x,
            foot_anchor_y, scale, visible, click_through, paused,
-           last_behavior_state, runtime_version
+           last_behavior_state, runtime_version, always_on_top
          ) VALUES (
            1, :active_character_id, :active_character_id, :monitor_id, :x, :y, :work_area_width,
            :work_area_height, :dpi_scale, :pet_logical_size, :foot_anchor_x,
            :foot_anchor_y, :scale, :visible, :click_through, :paused,
-           :last_behavior_state, :runtime_version
+           :last_behavior_state, :runtime_version, :always_on_top
          )
          ON CONFLICT(singleton) DO UPDATE SET
            active_pet_id = excluded.active_character_id,
@@ -260,7 +267,8 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            click_through = excluded.click_through,
            paused = excluded.paused,
            last_behavior_state = excluded.last_behavior_state,
-           runtime_version = excluded.runtime_version",
+           runtime_version = excluded.runtime_version,
+           always_on_top = excluded.always_on_top",
         named_params! {
             ":active_character_id": state.active_character_id,
             ":monitor_id": state.monitor_id,
@@ -278,6 +286,7 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
             ":paused": i64::from(state.paused),
             ":last_behavior_state": state.last_behavior_state,
             ":runtime_version": state.runtime_version,
+            ":always_on_top": i64::from(state.always_on_top),
         },
     )?;
     Ok(())

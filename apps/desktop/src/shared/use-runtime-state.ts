@@ -15,6 +15,7 @@ type RuntimeCommand =
   | "set_paused"
   | "set_active_character"
   | "set_click_through"
+  | "set_always_on_top"
   | "reset_pet_position"
   | "adjust_pet_scale"
   | "begin_pet_drag"
@@ -25,6 +26,7 @@ export interface RuntimeActions {
   setActiveCharacter(characterId: string): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
   setClickThrough(clickThrough: boolean): Promise<void>;
+  setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
   resetPosition(): Promise<void>;
   adjustScale(delta: number): Promise<void>;
   beginDrag(): Promise<void>;
@@ -106,6 +108,11 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
       execute("set_click_through", { clickThrough }, (current) => ({
         ...current,
         clickThrough,
+      })),
+    setAlwaysOnTop: (alwaysOnTop) =>
+      execute("set_always_on_top", { alwaysOnTop }, (current) => ({
+        ...current,
+        alwaysOnTop,
       })),
     resetPosition: () => execute("reset_pet_position", {}, (current) => current),
     adjustScale: (delta) =>

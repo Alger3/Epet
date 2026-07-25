@@ -10,6 +10,7 @@ use crate::windows;
 pub struct TrayControls {
     visible: CheckMenuItem<Wry>,
     click_through: CheckMenuItem<Wry>,
+    always_on_top: CheckMenuItem<Wry>,
     paused: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
 }
@@ -30,6 +31,14 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
         "鼠标穿透",
         true,
         snapshot.click_through,
+        None::<&str>,
+    )?;
+    let always_on_top = CheckMenuItem::with_id(
+        app,
+        "always-on-top",
+        "始终置顶",
+        true,
+        snapshot.always_on_top,
         None::<&str>,
     )?;
     let paused = CheckMenuItem::with_id(
@@ -60,6 +69,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
             &first_separator,
             &visible,
             &click_through,
+            &always_on_top,
             &paused,
             &reset,
             &autostart,
@@ -87,6 +97,14 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
                     .map_err(|error| error.to_string())
                     .and_then(|state| {
                         commands::set_click_through_internal(app, !state.click_through)
+                    })
+                    .map(|_| ()),
+                "always-on-top" => app
+                    .state::<AppState>()
+                    .snapshot()
+                    .map_err(|error| error.to_string())
+                    .and_then(|state| {
+                        commands::set_always_on_top_internal(app, !state.always_on_top)
                     })
                     .map(|_| ()),
                 "paused" => app
@@ -130,6 +148,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
     app.manage(TrayControls {
         visible,
         click_through,
+        always_on_top,
         paused,
         autostart,
     });
@@ -142,6 +161,7 @@ pub fn sync_checks(app: &AppHandle, snapshot: &RuntimeState) {
     };
     let _ = controls.visible.set_checked(snapshot.visible);
     let _ = controls.click_through.set_checked(snapshot.click_through);
+    let _ = controls.always_on_top.set_checked(snapshot.always_on_top);
     let _ = controls.paused.set_checked(snapshot.paused);
 }
 

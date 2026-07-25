@@ -92,6 +92,9 @@ pub fn restore_pet_window(app: &AppHandle, window: &WebviewWindow) -> Result<Run
     window
         .set_ignore_cursor_events(snapshot.click_through)
         .map_err(|error| error.to_string())?;
+    window
+        .set_always_on_top(snapshot.always_on_top)
+        .map_err(|error| error.to_string())?;
 
     if snapshot.visible {
         window.show().map_err(|error| error.to_string())?;

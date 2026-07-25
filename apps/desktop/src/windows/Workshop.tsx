@@ -148,6 +148,12 @@ export function Workshop() {
               onChange={(value) => void actions.setClickThrough(value)}
             />
             <Toggle
+              checked={state.alwaysOnTop}
+              description="关闭后使用普通窗口层级，会被其他应用覆盖"
+              label="始终置顶"
+              onChange={(value) => void actions.setAlwaysOnTop(value)}
+            />
+            <Toggle
               checked={autostart}
               description="登录系统后静默启动到托盘，不主动打开工坊"
               label="开机启动"
@@ -178,6 +184,7 @@ export function Workshop() {
               <div><dt>角色 ID</dt><dd>{state.activeCharacterId}</dd></div>
               <div><dt>显示器</dt><dd>{state.monitorId ?? "等待首次定位"}</dd></div>
               <div><dt>坐标</dt><dd>{state.x === null ? "自动" : `${Math.round(state.x)}, ${Math.round(state.y ?? 0)}`}</dd></div>
+              <div><dt>窗口层级</dt><dd>{state.alwaysOnTop ? "始终置顶" : "普通窗口"}</dd></div>
               <div><dt>状态版本</dt><dd>v{state.runtimeVersion}</dd></div>
             </dl>
           </article>

@@ -34,6 +34,7 @@ pub fn run() {
             commands::set_pet_visible,
             commands::set_paused,
             commands::set_click_through,
+            commands::set_always_on_top,
             commands::reset_pet_position,
             commands::adjust_pet_scale,
             commands::begin_pet_drag,

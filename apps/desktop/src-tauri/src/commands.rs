@@ -85,6 +85,16 @@ pub fn set_click_through(
 }
 
 #[tauri::command]
+pub fn set_always_on_top(
+    app: AppHandle,
+    window: WebviewWindow,
+    always_on_top: bool,
+) -> Result<RuntimeState, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    set_always_on_top_internal(&app, always_on_top)
+}
+
+#[tauri::command]
 pub fn reset_pet_position(app: AppHandle, window: WebviewWindow) -> Result<RuntimeState, String> {
     ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
     let snapshot = windows::reset_pet_position(&app)?;
@@ -215,6 +225,23 @@ pub fn set_click_through_internal(
     let snapshot = app
         .state::<AppState>()
         .update(|runtime| runtime.click_through = click_through)
+        .map_err(|error| error.to_string())?;
+    windows::emit_runtime_state(app, &snapshot);
+    tray::sync_checks(app, &snapshot);
+    Ok(snapshot)
+}
+
+pub fn set_always_on_top_internal(
+    app: &AppHandle,
+    always_on_top: bool,
+) -> Result<RuntimeState, String> {
+    let pet = windows::pet_window(app)?;
+    pet.set_always_on_top(always_on_top)
+        .map_err(|error| error.to_string())?;
+
+    let snapshot = app
+        .state::<AppState>()
+        .update(|runtime| runtime.always_on_top = always_on_top)
         .map_err(|error| error.to_string())?;
     windows::emit_runtime_state(app, &snapshot);
     tray::sync_checks(app, &snapshot);
