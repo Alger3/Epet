@@ -1,4 +1,6 @@
+mod behavior;
 mod commands;
+mod package;
 mod state;
 mod tray;
 mod windows;
@@ -22,6 +24,7 @@ pub fn run() {
             windows::initialize_pet_window(app.handle()).map_err(std::io::Error::other)?;
             tray::create(app, &snapshot)?;
             windows::start_autonomous_movement(app.handle());
+            windows::start_monitor_topology_watcher(app.handle());
             if std::env::args().any(|argument| argument == "--autostart")
                 && let Some(workshop) = app.get_webview_window(windows::WORKSHOP_LABEL)
             {
@@ -31,6 +34,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_runtime_state,
+            commands::inspect_pet_package,
             commands::set_active_character,
             commands::set_pet_visible,
             commands::set_paused,
@@ -40,6 +44,8 @@ pub fn run() {
             commands::reset_pet_position,
             commands::adjust_pet_scale,
             commands::begin_pet_drag,
+            commands::trigger_pet_tap,
+            commands::restore_pet_focus,
             commands::show_workshop,
             commands::get_autostart_enabled,
             commands::set_autostart_enabled,

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { findCharacter } from "../shared/characters";
 import { shouldReleasePressedState } from "../shared/runtime-state";
 import { useRuntimeState } from "../shared/use-runtime-state";
+import { SpriteAtlas } from "./SpriteAtlas";
 
 export function PetOverlay() {
   const movedRef = useRef(false);
@@ -11,8 +12,8 @@ export function PetOverlay() {
   const [pressed, setPressed] = useState(false);
   const character = findCharacter(state.activeCharacterId);
 
-  const finishPress = () => {
-    movedRef.current = false;
+  const finishPress = (resetMovement = true) => {
+    if (resetMovement) movedRef.current = false;
     pointerStartRef.current = null;
     setPressed(false);
   };
@@ -27,12 +28,16 @@ export function PetOverlay() {
 
   return (
     <main
-      className={`pet-overlay pet-overlay-${character.subjectKind} ${state.paused ? "pet-paused" : ""} ${state.lastBehaviorState === "walk" ? "pet-walking" : ""} ${pressed ? "pet-pressed" : ""}`}
-      onContextMenu={(event) => event.preventDefault()}
+      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        void actions.restoreFocus();
+      }}
       onPointerDown={(event) => {
         if (event.button !== 0 || state.clickThrough) return;
         movedRef.current = false;
         pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        event.currentTarget.setPointerCapture(event.pointerId);
         setPressed(true);
       }}
       onPointerMove={(event) => {
@@ -42,11 +47,25 @@ export function PetOverlay() {
         movedRef.current = true;
         void actions.beginDrag();
       }}
-      onPointerUp={() => {
+      onPointerUp={(event) => {
+        const moved = movedRef.current;
         finishPress();
+        if (event.button !== 0) {
+          void actions.restoreFocus();
+        } else if (!moved) {
+          void actions.triggerTap();
+        }
       }}
-      onPointerCancel={finishPress}
-      onLostPointerCapture={finishPress}
+      onPointerCancel={() => {
+        const moved = movedRef.current;
+        finishPress(!moved);
+        if (!moved) void actions.restoreFocus();
+      }}
+      onLostPointerCapture={() => {
+        const moved = movedRef.current;
+        finishPress(!moved);
+        if (!moved) void actions.restoreFocus();
+      }}
       onWheel={(event) => {
         event.preventDefault();
         void actions.adjustScale(event.deltaY > 0 ? -0.1 : 0.1);
@@ -57,7 +76,13 @@ export function PetOverlay() {
         role="img"
         aria-label={`${character.name}，${character.subjectLabel}桌面角色`}
       >
-        <img alt="" draggable={false} src={character.assetUrl} />
+        <SpriteAtlas
+          alt=""
+          behavior={state.lastBehaviorState}
+          definition={character.animation}
+          fallbackUrl={character.assetUrl}
+          paused={state.paused}
+        />
       </div>
     </main>
   );

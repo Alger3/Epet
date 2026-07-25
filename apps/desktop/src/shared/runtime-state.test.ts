@@ -30,7 +30,7 @@ describe("shouldReleasePressedState", () => {
 
   it("releases pressed feedback when dragging settles or is interrupted", () => {
     expect(shouldReleasePressedState(true, "idle")).toBe(true);
-    expect(shouldReleasePressedState(true, "paused")).toBe(true);
+    expect(shouldReleasePressedState(true, "drop")).toBe(true);
     expect(shouldReleasePressedState(true, "walk")).toBe(true);
   });
 

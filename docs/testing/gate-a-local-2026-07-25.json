@@ -1,0 +1,63 @@
+{
+    "Timestamp":  "2026-07-25T06:57:13.5428129Z",
+    "ProcessId":  25068,
+    "ProcessVersion":  "0.2.0",
+    "OsVersion":  "Microsoft Windows NT 10.0.26100.0",
+    "Screens":  [
+                    {
+                        "DeviceName":  "\\\\.\\DISPLAY5",
+                        "Primary":  true,
+                        "Bounds":  {
+                                       "X":  0,
+                                       "Y":  0,
+                                       "Width":  2560,
+                                       "Height":  1440
+                                   },
+                        "WorkingArea":  {
+                                            "X":  0,
+                                            "Y":  0,
+                                            "Width":  2560,
+                                            "Height":  1392
+                                        }
+                    }
+                ],
+    "PetWindow":  {
+                      "Handle":  2623530,
+                      "HandleHex":  "0x28082A",
+                      "Title":  "Epet 桌面角色",
+                      "Visible":  true,
+                      "Left":  386,
+                      "Top":  1143,
+                      "Right":  610,
+                      "Bottom":  1367,
+                      "Width":  224,
+                      "Height":  224,
+                      "ExtendedStyle":  134480280,
+                      "ToolWindow":  true,
+                      "NoActivate":  true,
+                      "TopMost":  true,
+                      "Dpi":  96
+                  },
+    "Checks":  {
+                   "TransparentCornerReturnsHtTransparent":  true,
+                   "OpaqueCenterIsInteractive":  true,
+                   "ForegroundUnchangedDuringHitTest":  true,
+                   "ForegroundUnchangedDuringRealClick":  true,
+                   "ToolWindow":  true,
+                   "NoActivate":  true,
+                   "HiddenFromAltTabByToolWindowStyle":  true,
+                   "EntireWindowInsideAWorkingArea":  true
+               },
+    "RawHitTest":  {
+                       "Corner":  -1,
+                       "Center":  1
+                   },
+    "ManualEvidenceStillRequired":  [
+                                        "Physical drag, scale, and restart at 125%, 150%, and 200% DPI",
+                                        "Physical dual-monitor, negative-origin, and hot-plug coverage",
+                                        "Real mouse clicks in transparent and opaque regions",
+                                        "Real Alt-Tab order and keyboard-focus switching",
+                                        "Complete hidden, drag, and autonomous-movement matrix",
+                                        "8-hour Windows 11 and 2-hour Windows 10 soak tests"
+                                    ]
+}

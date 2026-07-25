@@ -5,7 +5,13 @@ export const MAX_CHARACTER_SCALE = 1.5;
 export const MIN_PET_SCALE = MIN_CHARACTER_SCALE;
 export const MAX_PET_SCALE = MAX_CHARACTER_SCALE;
 
-export type BehaviorState = "idle" | "walk" | "drag" | "paused";
+export type BehaviorState =
+  | "idle"
+  | "walk"
+  | "sleep"
+  | "tap"
+  | "drag"
+  | "drop";
 
 export interface RuntimeState {
   activeCharacterId: string;

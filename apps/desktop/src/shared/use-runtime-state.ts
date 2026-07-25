@@ -20,6 +20,8 @@ type RuntimeCommand =
   | "reset_pet_position"
   | "adjust_pet_scale"
   | "begin_pet_drag"
+  | "trigger_pet_tap"
+  | "restore_pet_focus"
   | "show_workshop";
 
 export interface RuntimeActions {
@@ -32,6 +34,8 @@ export interface RuntimeActions {
   resetPosition(): Promise<void>;
   adjustScale(delta: number): Promise<void>;
   beginDrag(): Promise<void>;
+  triggerTap(): Promise<void>;
+  restoreFocus(): Promise<void>;
   showWorkshop(): Promise<void>;
 }
 
@@ -104,7 +108,7 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
       execute("set_paused", { paused }, (current) => ({
         ...current,
         paused,
-        lastBehaviorState: paused ? "paused" : "idle",
+        lastBehaviorState: "idle",
       })),
     setClickThrough: (clickThrough) =>
       execute("set_click_through", { clickThrough }, (current) => ({
@@ -136,6 +140,12 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
         ...current,
         lastBehaviorState: "drag",
       })),
+    triggerTap: () =>
+      execute("trigger_pet_tap", {}, (current) => ({
+        ...current,
+        lastBehaviorState: current.paused ? "idle" : "tap",
+      })),
+    restoreFocus: () => execute("restore_pet_focus", {}, (current) => current),
     showWorkshop: () => execute("show_workshop", {}, (current) => current),
   };
 

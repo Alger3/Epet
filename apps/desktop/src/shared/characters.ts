@@ -1,5 +1,6 @@
 import catSpriteUrl from "../../../../assets/builtin-pet/cat-idle.png";
 import humanAvatarSpriteUrl from "../../../../assets/builtin-character/human-avatar.png";
+import type { SpriteAtlasDefinition } from "./sprite-atlas";
 
 export type SubjectKind = "pet_cat" | "human_avatar";
 
@@ -10,6 +11,7 @@ export interface CharacterSummary {
   subjectLabel: string;
   description: string;
   assetUrl: string;
+  animation?: SpriteAtlasDefinition;
   optionalAction?: string;
 }
 
@@ -21,6 +23,31 @@ export const BUILTIN_CHARACTERS: readonly CharacterSummary[] = [
     subjectLabel: "猫咪",
     description: "温暖的内置橘猫，支持呼吸、点击、拖拽和桌面陪伴。",
     assetUrl: catSpriteUrl,
+    animation: {
+      imageUrl: catSpriteUrl,
+      canvas: { width: 1254, height: 1254 },
+      frames: Object.fromEntries(
+        ["idle", "walk", "sleep", "tap", "drag", "drop"].map((action) => [
+          `${action}_000`,
+          {
+            frame: { x: 0, y: 0, w: 1254, h: 1254 },
+            sourceSize: { w: 1254, h: 1254 },
+            spriteSource: { x: 0, y: 0, w: 1254, h: 1254 },
+          },
+        ]),
+      ),
+      actions: Object.fromEntries(
+        ["idle", "walk", "sleep", "tap", "drag", "drop"].map((action) => [
+          action,
+          {
+            frames: [`${action}_000`],
+            frameDurationMs: [100],
+            loop: action !== "tap" && action !== "drop",
+            fallback: action === "idle" ? null : "idle",
+          },
+        ]),
+      ),
+    },
   },
   {
     id: "builtin-forest-guide",

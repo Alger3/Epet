@@ -6,7 +6,10 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-use crate::state::{AppState, RuntimeState};
+use crate::{
+    behavior::{self, BehaviorEvent},
+    state::{AppState, RuntimeState},
+};
 
 pub const WORKSHOP_LABEL: &str = "workshop";
 pub const PET_LABEL: &str = "pet-overlay";
@@ -15,6 +18,10 @@ const SAFE_MARGIN_LOGICAL: f64 = 24.0;
 const AUTONOMOUS_MOVE_TICK: Duration = Duration::from_millis(100);
 const AUTONOMOUS_MOVE_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 const AUTONOMOUS_MOVE_SPEED_LOGICAL: f64 = 48.0;
+const AUTONOMOUS_IDLE_DURATION: Duration = Duration::from_secs(2);
+const AUTONOMOUS_WALK_DURATION: Duration = Duration::from_secs(8);
+const AUTONOMOUS_SLEEP_DURATION: Duration = Duration::from_secs(6);
+const MONITOR_TOPOLOGY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn show_workshop(app: &AppHandle) -> Result<(), String> {
     let window = app
@@ -195,7 +202,8 @@ pub fn start_autonomous_movement(app: &AppHandle) {
     let app = app.clone();
     thread::spawn(move || {
         let mut direction = -1;
-        let mut moving = false;
+        let mut walks_completed = 0_u32;
+        let mut phase_started = Instant::now();
         let mut last_tick = Instant::now();
         let mut last_persist = Instant::now();
 
@@ -209,28 +217,82 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             let Ok(snapshot) = state.snapshot() else {
                 continue;
             };
-            let can_move = snapshot.autonomous_movement
-                && snapshot.visible
-                && !snapshot.paused
-                && matches!(snapshot.last_behavior_state.as_str(), "idle" | "walk");
+            let can_move = can_autonomous_move(&snapshot);
+
+            if snapshot.last_behavior_state == "sleep" {
+                if snapshot.autonomous_movement
+                    && snapshot.visible
+                    && !snapshot.paused
+                    && phase_started.elapsed() >= AUTONOMOUS_SLEEP_DURATION
+                    && let Ok(awake) = state.update(|runtime| {
+                        runtime.last_behavior_state =
+                            behavior::transition(&runtime.last_behavior_state, BehaviorEvent::Wake)
+                                .to_owned();
+                    })
+                {
+                    emit_runtime_state(&app, &awake);
+                    phase_started = Instant::now();
+                }
+                last_tick = Instant::now();
+                continue;
+            }
 
             if !can_move {
-                if moving
-                    && snapshot.last_behavior_state == "walk"
-                    && let Ok(idle) =
-                        state.update(|runtime| runtime.last_behavior_state = "idle".to_owned())
+                if snapshot.last_behavior_state == "walk"
+                    && let Ok(idle) = state.update(|runtime| {
+                        runtime.last_behavior_state = behavior::transition(
+                            &runtime.last_behavior_state,
+                            BehaviorEvent::StopWalk,
+                        )
+                        .to_owned();
+                    })
                 {
                     emit_runtime_state(&app, &idle);
                 }
-                moving = false;
+                phase_started = Instant::now();
                 last_tick = Instant::now();
                 continue;
             }
 
             let Some(window) = app.get_webview_window(PET_LABEL) else {
-                moving = false;
                 continue;
             };
+
+            if snapshot.last_behavior_state == "idle" {
+                if phase_started.elapsed() < AUTONOMOUS_IDLE_DURATION {
+                    last_tick = Instant::now();
+                    continue;
+                }
+                let next_event = if walks_completed > 0 && walks_completed.is_multiple_of(3) {
+                    BehaviorEvent::FallAsleep
+                } else {
+                    BehaviorEvent::StartWalk
+                };
+                if let Ok(next) = state.update(|runtime| {
+                    runtime.last_behavior_state =
+                        behavior::transition(&runtime.last_behavior_state, next_event).to_owned();
+                }) {
+                    emit_runtime_state(&app, &next);
+                }
+                phase_started = Instant::now();
+                last_tick = Instant::now();
+                continue;
+            }
+
+            if phase_started.elapsed() >= AUTONOMOUS_WALK_DURATION {
+                if let Ok(idle) = state.update(|runtime| {
+                    runtime.last_behavior_state =
+                        behavior::transition(&runtime.last_behavior_state, BehaviorEvent::StopWalk)
+                            .to_owned();
+                }) {
+                    emit_runtime_state(&app, &idle);
+                }
+                walks_completed = walks_completed.saturating_add(1);
+                phase_started = Instant::now();
+                last_tick = Instant::now();
+                continue;
+            }
+
             let Ok(position) = window.outer_position() else {
                 continue;
             };
@@ -244,9 +306,7 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             let now = Instant::now();
             let elapsed = now.duration_since(last_tick).as_secs_f64();
             last_tick = now;
-            let step = (AUTONOMOUS_MOVE_SPEED_LOGICAL * monitor.scale_factor() * elapsed)
-                .round()
-                .max(1.0) as i32;
+            let step = autonomous_movement_step(elapsed, monitor.scale_factor());
             let (x, y, next_direction) = advance_horizontal(
                 position.x,
                 size.width,
@@ -257,15 +317,6 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             );
             direction = next_direction;
 
-            if !moving {
-                if let Ok(walking) =
-                    state.update(|runtime| runtime.last_behavior_state = "walk".to_owned())
-                {
-                    emit_runtime_state(&app, &walking);
-                }
-                moving = true;
-            }
-
             if window.set_position(PhysicalPosition::new(x, y)).is_err() {
                 continue;
             }
@@ -274,6 +325,96 @@ pub fn start_autonomous_movement(app: &AppHandle) {
                 let _ = persist_pet_geometry(&app, &window, false);
                 last_persist = Instant::now();
             }
+        }
+    });
+}
+
+pub fn start_monitor_topology_watcher(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let mut previous = monitor_topology_signature(&app).ok();
+        loop {
+            thread::sleep(MONITOR_TOPOLOGY_POLL_INTERVAL);
+            let state = app.state::<AppState>();
+            if state.is_exiting() {
+                return;
+            }
+
+            let Ok(current) = monitor_topology_signature(&app) else {
+                continue;
+            };
+            let refresh_app = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(window) = refresh_app.get_webview_window(PET_LABEL) {
+                    let _ = refresh_no_activate_descendants(&window);
+                }
+            });
+            let changed = previous.as_ref().is_some_and(|value| value != &current);
+            previous = Some(current);
+            if !changed {
+                continue;
+            }
+
+            let callback_app = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(window) = callback_app.get_webview_window(PET_LABEL) else {
+                    return;
+                };
+                if let Err(error) = restore_pet_window(&callback_app, &window)
+                    && let Some(state) = callback_app.try_state::<AppState>()
+                    && let Ok(snapshot) =
+                        state.set_diagnostic(format!("显示器拓扑恢复失败：{error}"))
+                {
+                    emit_runtime_state(&callback_app, &snapshot);
+                }
+            });
+        }
+    });
+}
+
+fn monitor_topology_signature(app: &AppHandle) -> Result<Vec<String>, String> {
+    let mut signature = app
+        .available_monitors()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|monitor| {
+            let position = monitor.position();
+            let size = monitor.size();
+            format!(
+                "{}:{}:{}:{}:{}:{:.4}",
+                monitor.name().map(String::as_str).unwrap_or(""),
+                position.x,
+                position.y,
+                size.width,
+                size.height,
+                monitor.scale_factor()
+            )
+        })
+        .collect::<Vec<_>>();
+    signature.sort();
+    Ok(signature)
+}
+
+pub fn schedule_behavior_timeout(
+    app: AppHandle,
+    expected_state: &'static str,
+    event: BehaviorEvent,
+    delay: Duration,
+) {
+    thread::spawn(move || {
+        thread::sleep(delay);
+        let state = app.state::<AppState>();
+        let Ok(snapshot) = state.snapshot() else {
+            return;
+        };
+        if snapshot.last_behavior_state != expected_state {
+            return;
+        }
+        if let Ok(next) = state.update(|runtime| {
+            runtime.last_behavior_state =
+                behavior::transition(&runtime.last_behavior_state, event).to_owned();
+        }) {
+            emit_runtime_state(&app, &next);
         }
     });
 }
@@ -304,18 +445,44 @@ fn persist_pet_geometry(
     let state = app.state::<AppState>();
     let scale = state.snapshot().map_err(|error| error.to_string())?.scale;
     let geometry = geometry_snapshot(&monitor, PhysicalPosition::new(x, y), size, scale);
+    let can_settle_drag = settle_drag && !primary_button_down();
     let snapshot = state
         .update(|runtime| {
             apply_geometry(runtime, &geometry);
-            if settle_drag && runtime.last_behavior_state == "drag" {
-                runtime.last_behavior_state = "idle".to_owned();
+            if can_settle_drag && runtime.last_behavior_state == "drag" {
+                runtime.last_behavior_state =
+                    behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
+                        .to_owned();
             }
         })
         .map_err(|error| error.to_string())?;
 
     emit_runtime_state(app, &snapshot);
+    if settle_drag && snapshot.last_behavior_state == "drag" {
+        schedule_position_persist(window.clone());
+    } else if snapshot.last_behavior_state == "drop" {
+        restore_previous_foreground();
+        schedule_behavior_timeout(
+            app.clone(),
+            "drop",
+            BehaviorEvent::AnimationFinished,
+            Duration::from_millis(220),
+        );
+    }
     crate::tray::sync_checks(app, &snapshot);
     Ok(snapshot)
+}
+
+#[cfg(windows)]
+fn primary_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+
+    unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 }
+}
+
+#[cfg(not(windows))]
+fn primary_button_down() -> bool {
+    false
 }
 
 fn apply_pet_size(window: &WebviewWindow, scale: f64) -> Result<(), String> {
@@ -523,6 +690,19 @@ fn advance_horizontal(
     }
 }
 
+fn autonomous_movement_step(elapsed_seconds: f64, dpi_scale: f64) -> i32 {
+    (AUTONOMOUS_MOVE_SPEED_LOGICAL * dpi_scale * elapsed_seconds)
+        .round()
+        .max(1.0) as i32
+}
+
+fn can_autonomous_move(state: &RuntimeState) -> bool {
+    state.autonomous_movement
+        && state.visible
+        && !state.paused
+        && matches!(state.last_behavior_state.as_str(), "idle" | "walk")
+}
+
 #[cfg(not(windows))]
 fn apply_native_pet_styles(_window: &WebviewWindow) -> Result<(), String> {
     Ok(())
@@ -542,12 +722,303 @@ fn apply_native_pet_styles(window: &WebviewWindow) -> Result<(), String> {
         let desired = current | (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, desired);
     }
+    install_native_hit_test(window, hwnd)?;
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HitboxShape {
+    Rectangle,
+    Ellipse,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct HitboxRegion {
+    shape: HitboxShape,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl HitboxRegion {
+    const fn rectangle(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            shape: HitboxShape::Rectangle,
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    const fn ellipse(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            shape: HitboxShape::Ellipse,
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn contains(self, normalized_x: f64, normalized_y: f64) -> bool {
+        if self.width <= 0.0 || self.height <= 0.0 {
+            return false;
+        }
+
+        match self.shape {
+            HitboxShape::Rectangle => {
+                normalized_x >= self.x
+                    && normalized_x <= self.x + self.width
+                    && normalized_y >= self.y
+                    && normalized_y <= self.y + self.height
+            }
+            HitboxShape::Ellipse => {
+                let radius_x = self.width / 2.0;
+                let radius_y = self.height / 2.0;
+                let center_x = self.x + radius_x;
+                let center_y = self.y + radius_y;
+                let dx = (normalized_x - center_x) / radius_x;
+                let dy = (normalized_y - center_y) / radius_y;
+                dx * dx + dy * dy <= 1.0
+            }
+        }
+    }
+}
+
+fn builtin_hitboxes(character_id: &str) -> Vec<HitboxRegion> {
+    match character_id {
+        "builtin-forest-guide" => vec![
+            HitboxRegion::ellipse(0.28, 0.04, 0.44, 0.36),
+            HitboxRegion::rectangle(0.3, 0.28, 0.4, 0.67),
+        ],
+        _ => vec![
+            HitboxRegion::ellipse(0.1, 0.08, 0.55, 0.78),
+            HitboxRegion::ellipse(0.42, 0.12, 0.5, 0.58),
+        ],
+    }
+}
+
+fn hitboxes_contain(hitboxes: &[HitboxRegion], x: f64, y: f64) -> bool {
+    hitboxes.iter().any(|hitbox| hitbox.contains(x, y))
+}
+
+#[cfg(windows)]
+const PET_HIT_TEST_SUBCLASS_ID: usize = 0x4550_4554;
+#[cfg(windows)]
+const PET_NO_ACTIVATE_SUBCLASS_ID: usize = 0x4550_4E41;
+
+#[cfg(windows)]
+static PET_HITBOXES: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<isize, Vec<HitboxRegion>>>,
+> = std::sync::OnceLock::new();
+#[cfg(windows)]
+static PREVIOUS_FOREGROUND_WINDOW: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
+
+#[cfg(windows)]
+unsafe extern "system" fn pet_hit_test_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    message: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _subclass_id: usize,
+    _reference_data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::{LRESULT, POINT};
+    use windows::Win32::Graphics::Gdi::ScreenToClient;
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, HTTRANSPARENT, MA_NOACTIVATE, WA_INACTIVE, WM_ACTIVATE, WM_MOUSEACTIVATE,
+        WM_NCDESTROY, WM_NCHITTEST,
+    };
+
+    if message == WM_MOUSEACTIVATE {
+        return LRESULT(MA_NOACTIVATE as isize);
+    } else if message == WM_NCHITTEST {
+        let mut client_rect = windows::Win32::Foundation::RECT::default();
+        if unsafe { GetClientRect(hwnd, &mut client_rect) }.is_ok() {
+            let raw = lparam.0 as u64;
+            let mut point = POINT {
+                x: (raw as u16 as i16) as i32,
+                y: ((raw >> 16) as u16 as i16) as i32,
+            };
+            if unsafe { ScreenToClient(hwnd, &mut point) }.as_bool() {
+                let width = (client_rect.right - client_rect.left).max(1) as f64;
+                let height = (client_rect.bottom - client_rect.top).max(1) as f64;
+                let normalized_x = f64::from(point.x - client_rect.left) / width;
+                let normalized_y = f64::from(point.y - client_rect.top) / height;
+                let contains = PET_HITBOXES
+                    .get()
+                    .and_then(|map| map.lock().ok())
+                    .and_then(|map| map.get(&(hwnd.0 as isize)).cloned())
+                    .is_none_or(|hitboxes| hitboxes_contain(&hitboxes, normalized_x, normalized_y));
+                if !contains {
+                    return LRESULT(HTTRANSPARENT as isize);
+                }
+            }
+        }
+    } else if message == WM_NCDESTROY {
+        if let Some(map) = PET_HITBOXES.get()
+            && let Ok(mut map) = map.lock()
+        {
+            map.remove(&(hwnd.0 as isize));
+        }
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(pet_hit_test_proc), PET_HIT_TEST_SUBCLASS_ID);
+        }
+    }
+
+    let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+    if message == WM_ACTIVATE && (wparam.0 & 0xffff) as u32 != WA_INACTIVE && lparam.0 != 0 {
+        PREVIOUS_FOREGROUND_WINDOW.store(lparam.0, std::sync::atomic::Ordering::Release);
+    }
+    result
+}
+
+#[cfg(windows)]
+pub fn restore_previous_foreground() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+
+    let previous = PREVIOUS_FOREGROUND_WINDOW.swap(0, std::sync::atomic::Ordering::AcqRel);
+    if previous == 0 {
+        return;
+    }
+    unsafe {
+        let _ = SetForegroundWindow(HWND(previous as *mut _));
+    }
+}
+
+#[cfg(not(windows))]
+pub fn restore_previous_foreground() {}
+
+#[cfg(windows)]
+unsafe extern "system" fn pet_no_activate_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    message: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _subclass_id: usize,
+    _reference_data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{MA_NOACTIVATE, WM_MOUSEACTIVATE, WM_NCDESTROY};
+
+    if message == WM_MOUSEACTIVATE {
+        return LRESULT(MA_NOACTIVATE as isize);
+    }
+    if message == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(
+                hwnd,
+                Some(pet_no_activate_proc),
+                PET_NO_ACTIVATE_SUBCLASS_ID,
+            );
+        }
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn install_no_activate_on_child(
+    hwnd: windows::Win32::Foundation::HWND,
+    _lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::core::BOOL {
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+
+    unsafe {
+        SetWindowSubclass(
+            hwnd,
+            Some(pet_no_activate_proc),
+            PET_NO_ACTIVATE_SUBCLASS_ID,
+            0,
+        )
+    }
+}
+
+#[cfg(windows)]
+fn refresh_no_activate_descendants(window: &WebviewWindow) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+    use windows::Win32::UI::WindowsAndMessaging::EnumChildWindows;
+
+    let raw = window.hwnd().map_err(|error| error.to_string())?;
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe {
+        let _ = SetWindowSubclass(
+            hwnd,
+            Some(pet_no_activate_proc),
+            PET_NO_ACTIVATE_SUBCLASS_ID,
+            0,
+        );
+        let _ = EnumChildWindows(
+            Some(hwnd),
+            Some(install_no_activate_on_child),
+            Default::default(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn refresh_no_activate_descendants(_window: &WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn set_pet_hitbox_profile(window: &WebviewWindow, character_id: &str) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+
+    let raw = window.hwnd().map_err(|error| error.to_string())?;
+    let hwnd = HWND(raw.0 as *mut _);
+    PET_HITBOXES
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "桌宠命中区域锁已损坏".to_owned())?
+        .insert(hwnd.0 as isize, builtin_hitboxes(character_id));
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn set_pet_hitbox_profile(_window: &WebviewWindow, _character_id: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn install_native_hit_test(
+    window: &WebviewWindow,
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<(), String> {
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+
+    let character_id = window
+        .app_handle()
+        .state::<AppState>()
+        .snapshot()
+        .map_err(|error| error.to_string())?
+        .active_character_id;
+    set_pet_hitbox_profile(window, &character_id)?;
+    refresh_no_activate_descendants(window)?;
+
+    if unsafe { SetWindowSubclass(hwnd, Some(pet_hit_test_proc), PET_HIT_TEST_SUBCLASS_ID, 0) }
+        .as_bool()
+    {
+        Ok(())
+    } else {
+        Err("无法安装桌宠透明区域命中测试".to_owned())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{advance_horizontal, clamp_position};
+    use super::{
+        HitboxRegion, advance_horizontal, autonomous_movement_step, can_autonomous_move,
+        clamp_position, hitboxes_contain,
+    };
+    use crate::state::RuntimeState;
 
     #[test]
     fn clamps_window_inside_negative_origin_monitor() {
@@ -591,5 +1062,50 @@ mod tests {
             advance_horizontal(-1919, 320, 320, (-1920, 0, 0, 1080), -1, 5),
             (-1920, 760, 1)
         );
+    }
+
+    #[test]
+    fn autonomous_movement_scales_for_gate_a_dpi_matrix() {
+        assert_eq!(autonomous_movement_step(0.1, 1.25), 6);
+        assert_eq!(autonomous_movement_step(0.1, 1.5), 7);
+        assert_eq!(autonomous_movement_step(0.1, 2.0), 10);
+    }
+
+    #[test]
+    fn autonomous_movement_respects_runtime_priorities() {
+        let mut state = RuntimeState {
+            autonomous_movement: true,
+            ..RuntimeState::default()
+        };
+        assert!(can_autonomous_move(&state));
+
+        state.visible = false;
+        assert!(!can_autonomous_move(&state));
+        state.visible = true;
+        state.paused = true;
+        assert!(!can_autonomous_move(&state));
+        state.paused = false;
+        for behavior in ["tap", "drag", "drop", "sleep"] {
+            state.last_behavior_state = behavior.to_owned();
+            assert!(
+                !can_autonomous_move(&state),
+                "{behavior} must block movement"
+            );
+        }
+        state.last_behavior_state = "idle".to_owned();
+        state.autonomous_movement = false;
+        assert!(!can_autonomous_move(&state));
+    }
+
+    #[test]
+    fn normalized_hitboxes_reject_transparent_corners() {
+        let hitboxes = [
+            HitboxRegion::ellipse(0.1, 0.1, 0.8, 0.8),
+            HitboxRegion::rectangle(0.4, 0.0, 0.2, 1.0),
+        ];
+        assert!(hitboxes_contain(&hitboxes, 0.5, 0.5));
+        assert!(hitboxes_contain(&hitboxes, 0.5, 0.02));
+        assert!(!hitboxes_contain(&hitboxes, 0.02, 0.02));
+        assert!(!hitboxes_contain(&hitboxes, 0.98, 0.98));
     }
 }
