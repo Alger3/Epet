@@ -80,12 +80,11 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::ScaleFactorChanged { .. } if label == windows::PET_LABEL => {
-                    if let Some(pet) = app.get_webview_window(windows::PET_LABEL)
-                        && let Err(error) = windows::restore_pet_window(app, &pet)
-                        && let Some(state) = app.try_state::<state::AppState>()
-                        && let Ok(snapshot) = state.set_diagnostic(format!("DPI 恢复失败：{error}"))
-                    {
-                        windows::emit_runtime_state(app, &snapshot);
+                    // Tao applies WM_DPICHANGED's suggested rectangle after dispatching this
+                    // event. Resizing synchronously here races that update and can collapse a
+                    // transparent window to 1x1 when it returns from a mixed-DPI monitor.
+                    if let Some(pet) = app.get_webview_window(windows::PET_LABEL) {
+                        windows::schedule_position_persist(pet);
                     }
                 }
                 tauri::WindowEvent::Destroyed if label == windows::PET_LABEL => {

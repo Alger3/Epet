@@ -435,28 +435,36 @@ fn persist_pet_geometry(
     window: &WebviewWindow,
     settle_drag: bool,
 ) -> Result<RuntimeState, String> {
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let size = window.outer_size().map_err(|error| error.to_string())?;
-    let monitor = window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "桌宠窗口当前不在可用显示器中".to_owned())?;
-    let bounds = monitor_bounds(&monitor);
-    let (x, y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
-    if (x, y) != (position.x, position.y) {
-        window
-            .set_position(PhysicalPosition::new(x, y))
-            .map_err(|error| error.to_string())?;
+    if should_defer_position_settle(settle_drag, primary_button_down()) {
+        schedule_position_persist(window.clone());
+        return app
+            .state::<AppState>()
+            .snapshot()
+            .map_err(|error| error.to_string());
     }
 
+    let (position, size) = pet_window_geometry(window)?;
     let state = app.state::<AppState>();
     let scale = state.snapshot().map_err(|error| error.to_string())?.scale;
-    let geometry = geometry_snapshot(&monitor, PhysicalPosition::new(x, y), size, scale);
-    let can_settle_drag = settle_drag && !primary_button_down();
+    let monitor = window_monitor_snapshot(window, position, size)?;
+    let bounds = monitor.bounds;
+    let (x, y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
+    if (x, y) != (position.x, position.y) {
+        set_pet_physical_position(window, PhysicalPosition::new(x, y))?;
+    }
+
+    let geometry = geometry_snapshot_for_bounds(
+        monitor.id,
+        bounds,
+        monitor.dpi_scale,
+        PhysicalPosition::new(x, y),
+        size,
+        scale,
+    );
     let snapshot = state
         .update(|runtime| {
             apply_geometry(runtime, &geometry);
-            if can_settle_drag && runtime.last_behavior_state == "drag" {
+            if settle_drag && runtime.last_behavior_state == "drag" {
                 runtime.last_behavior_state =
                     behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
                         .to_owned();
@@ -478,6 +486,76 @@ fn persist_pet_geometry(
     }
     crate::tray::sync_checks(app, &snapshot);
     Ok(snapshot)
+}
+
+#[cfg(windows)]
+fn pet_window_geometry(
+    window: &WebviewWindow,
+) -> Result<(PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let raw = window.hwnd().map_err(|error| error.to_string())?;
+    let hwnd = HWND(raw.0 as *mut _);
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(hwnd, &mut rect) }.map_err(|error| error.to_string())?;
+    Ok((
+        PhysicalPosition::new(rect.left, rect.top),
+        tauri::PhysicalSize::new(
+            (rect.right - rect.left).max(1) as u32,
+            (rect.bottom - rect.top).max(1) as u32,
+        ),
+    ))
+}
+
+#[cfg(not(windows))]
+fn pet_window_geometry(
+    window: &WebviewWindow,
+) -> Result<(PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
+    Ok((
+        window.outer_position().map_err(|error| error.to_string())?,
+        window.outer_size().map_err(|error| error.to_string())?,
+    ))
+}
+
+#[cfg(windows)]
+fn set_pet_physical_position(
+    window: &WebviewWindow,
+    position: PhysicalPosition<i32>,
+) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+    };
+
+    let raw = window.hwnd().map_err(|error| error.to_string())?;
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            position.x,
+            position.y,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
+        )
+    }
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+fn set_pet_physical_position(
+    window: &WebviewWindow,
+    position: PhysicalPosition<i32>,
+) -> Result<(), String> {
+    window
+        .set_position(position)
+        .map_err(|error| error.to_string())
+}
+
+fn should_defer_position_settle(settle_drag: bool, primary_button_down: bool) -> bool {
+    settle_drag && primary_button_down
 }
 
 #[cfg(windows)]
@@ -511,24 +589,118 @@ struct GeometrySnapshot {
     foot_anchor_y: f64,
 }
 
+struct WindowMonitorSnapshot {
+    id: String,
+    bounds: (i32, i32, i32, i32),
+    dpi_scale: f64,
+}
+
+#[cfg(windows)]
+fn window_monitor_snapshot(
+    _window: &WebviewWindow,
+    position: PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+) -> Result<WindowMonitorSnapshot, String> {
+    use std::mem::size_of;
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MONITORINFOEXW, MonitorFromPoint,
+    };
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+
+    let center = POINT {
+        x: position.x + size.width as i32 / 2,
+        y: position.y + size.height as i32 / 2,
+    };
+    let monitor = unsafe { MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFOEXW {
+        monitorInfo: MONITORINFO {
+            cbSize: size_of::<MONITORINFOEXW>() as u32,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, (&raw mut info).cast::<MONITORINFO>()) }.as_bool() {
+        return Err("无法读取桌宠所在显示器的原生工作区".to_owned());
+    }
+
+    let device_end = info
+        .szDevice
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(info.szDevice.len());
+    let mut dpi_x = 96_u32;
+    let mut dpi_y = 96_u32;
+    let _ = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
+    Ok(WindowMonitorSnapshot {
+        id: String::from_utf16_lossy(&info.szDevice[..device_end]),
+        bounds: (
+            info.monitorInfo.rcWork.left,
+            info.monitorInfo.rcWork.top,
+            info.monitorInfo.rcWork.right,
+            info.monitorInfo.rcWork.bottom,
+        ),
+        dpi_scale: if dpi_x == 0 {
+            1.0
+        } else {
+            f64::from(dpi_x) / 96.0
+        },
+    })
+}
+
+#[cfg(not(windows))]
+fn window_monitor_snapshot(
+    window: &WebviewWindow,
+    _position: PhysicalPosition<i32>,
+    _size: tauri::PhysicalSize<u32>,
+) -> Result<WindowMonitorSnapshot, String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "桌宠窗口当前不在可用显示器中".to_owned())?;
+    Ok(WindowMonitorSnapshot {
+        id: monitor_id(&monitor),
+        bounds: monitor_bounds(&monitor),
+        dpi_scale: monitor.scale_factor(),
+    })
+}
+
 fn geometry_snapshot(
     monitor: &Monitor,
     position: PhysicalPosition<i32>,
     size: tauri::PhysicalSize<u32>,
     scale: f64,
 ) -> GeometrySnapshot {
-    let (left, top, right, bottom) = monitor_bounds(monitor);
+    geometry_snapshot_for_bounds(
+        monitor_id(monitor),
+        monitor_bounds(monitor),
+        monitor.scale_factor(),
+        position,
+        size,
+        scale,
+    )
+}
+
+fn geometry_snapshot_for_bounds(
+    monitor_id: String,
+    bounds: (i32, i32, i32, i32),
+    dpi_scale: f64,
+    position: PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    scale: f64,
+) -> GeometrySnapshot {
+    let (left, top, right, bottom) = bounds;
     let width = f64::from((right - left).max(1));
     let height = f64::from((bottom - top).max(1));
     let foot_x = position.x + size.width as i32 / 2;
     let foot_y = position.y + size.height as i32;
     GeometrySnapshot {
-        monitor_id: monitor_id(monitor),
+        monitor_id,
         x: f64::from(position.x),
         y: f64::from(position.y),
         work_area_width: width,
         work_area_height: height,
-        dpi_scale: monitor.scale_factor(),
+        dpi_scale,
         pet_logical_size: PET_BASE_SIZE * scale,
         foot_anchor_x: (f64::from(foot_x - left) / width).clamp(0.0, 1.0),
         foot_anchor_y: (f64::from(foot_y - top) / height).clamp(0.0, 1.0),
@@ -1054,7 +1226,7 @@ fn install_native_hit_test(
 mod tests {
     use super::{
         HitboxRegion, advance_horizontal, autonomous_movement_step, can_autonomous_move,
-        clamp_position, hitboxes_contain, should_enter_sleep,
+        clamp_position, hitboxes_contain, should_defer_position_settle, should_enter_sleep,
     };
     use crate::state::RuntimeState;
     use std::time::Duration;
@@ -1073,6 +1245,13 @@ mod tests {
             clamp_position(100, 100, 1200, 900, (0, 0, 800, 600)),
             (0, 0)
         );
+    }
+
+    #[test]
+    fn position_settle_waits_until_cross_monitor_drag_is_released() {
+        assert!(should_defer_position_settle(true, true));
+        assert!(!should_defer_position_settle(true, false));
+        assert!(!should_defer_position_settle(false, true));
     }
 
     #[test]
