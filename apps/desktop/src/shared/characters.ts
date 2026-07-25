@@ -27,7 +27,7 @@ export const BUILTIN_CHARACTERS: readonly CharacterSummary[] = [
       imageUrl: catSpriteUrl,
       canvas: { width: 1254, height: 1254 },
       frames: Object.fromEntries(
-        ["idle", "walk", "sleep", "tap", "drag", "drop"].map((action) => [
+        ["idle", "walk", "sleep", "tap", "drag", "drop", "wake"].map((action) => [
           `${action}_000`,
           {
             frame: { x: 0, y: 0, w: 1254, h: 1254 },
@@ -37,12 +37,12 @@ export const BUILTIN_CHARACTERS: readonly CharacterSummary[] = [
         ]),
       ),
       actions: Object.fromEntries(
-        ["idle", "walk", "sleep", "tap", "drag", "drop"].map((action) => [
+        ["idle", "walk", "sleep", "tap", "drag", "drop", "wake"].map((action) => [
           action,
           {
             frames: [`${action}_000`],
             frameDurationMs: [100],
-            loop: action !== "tap" && action !== "drop",
+            loop: !["tap", "drop", "wake"].includes(action),
             fallback: action === "idle" ? null : "idle",
           },
         ]),

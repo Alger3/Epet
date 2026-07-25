@@ -12,14 +12,14 @@ pub enum BehaviorEvent {
 
 pub fn transition(current: &str, event: BehaviorEvent) -> &'static str {
     match event {
-        BehaviorEvent::Tap => "tap",
-        BehaviorEvent::DragStart => "drag",
+        BehaviorEvent::Tap if current != "sleep" => "tap",
+        BehaviorEvent::DragStart if current != "sleep" => "drag",
         BehaviorEvent::DragEnd if current == "drag" => "drop",
-        BehaviorEvent::AnimationFinished if matches!(current, "tap" | "drop") => "idle",
+        BehaviorEvent::AnimationFinished if matches!(current, "tap" | "drop" | "wake") => "idle",
         BehaviorEvent::StartWalk if current == "idle" => "walk",
         BehaviorEvent::StopWalk if current == "walk" => "idle",
-        BehaviorEvent::FallAsleep if current == "idle" => "sleep",
-        BehaviorEvent::Wake if current == "sleep" => "idle",
+        BehaviorEvent::FallAsleep if matches!(current, "idle" | "walk") => "sleep",
+        BehaviorEvent::Wake if current == "sleep" => "wake",
         _ => normalize(current),
     }
 }
@@ -32,6 +32,7 @@ pub fn normalize(current: &str) -> &'static str {
         "tap" => "tap",
         "drag" => "drag",
         "drop" => "drop",
+        "wake" => "wake",
         _ => "idle",
     }
 }
@@ -45,22 +46,26 @@ mod tests {
         assert_eq!(transition("idle", BehaviorEvent::StartWalk), "walk");
         assert_eq!(transition("walk", BehaviorEvent::StopWalk), "idle");
         assert_eq!(transition("idle", BehaviorEvent::FallAsleep), "sleep");
-        assert_eq!(transition("sleep", BehaviorEvent::Wake), "idle");
+        assert_eq!(transition("walk", BehaviorEvent::FallAsleep), "sleep");
+        assert_eq!(transition("sleep", BehaviorEvent::Wake), "wake");
+        assert_eq!(transition("wake", BehaviorEvent::AnimationFinished), "idle");
     }
 
     #[test]
     fn tap_interrupts_any_state_then_returns_idle() {
-        for state in ["idle", "walk", "sleep", "tap", "drop"] {
+        for state in ["idle", "walk", "tap", "drop", "wake"] {
             assert_eq!(transition(state, BehaviorEvent::Tap), "tap");
             assert_eq!(transition("tap", BehaviorEvent::AnimationFinished), "idle");
         }
+        assert_eq!(transition("sleep", BehaviorEvent::Tap), "sleep");
     }
 
     #[test]
     fn drag_and_drop_have_explicit_recovery() {
-        for state in ["idle", "walk", "sleep", "tap", "drop"] {
+        for state in ["idle", "walk", "tap", "drop", "wake"] {
             assert_eq!(transition(state, BehaviorEvent::DragStart), "drag");
         }
+        assert_eq!(transition("sleep", BehaviorEvent::DragStart), "sleep");
         assert_eq!(transition("drag", BehaviorEvent::DragEnd), "drop");
         assert_eq!(transition("drop", BehaviorEvent::AnimationFinished), "idle");
     }

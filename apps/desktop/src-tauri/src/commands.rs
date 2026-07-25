@@ -3,7 +3,9 @@ use tauri_plugin_autostart::ManagerExt;
 
 use crate::behavior::{self, BehaviorEvent};
 use crate::package::{self, PackageSummary};
-use crate::state::{AppState, MAX_PET_SCALE, MIN_PET_SCALE, RuntimeState};
+use crate::state::{
+    AppState, MAX_PET_SCALE, MIN_PET_SCALE, RuntimeState, SLEEP_AFTER_MINUTE_OPTIONS,
+};
 use crate::{tray, windows};
 
 #[tauri::command]
@@ -43,6 +45,9 @@ pub fn set_active_character(
     }
 
     let state = app.state::<AppState>();
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
     if !state
         .character_exists(&character_id)
         .map_err(|error| error.to_string())?
@@ -119,6 +124,28 @@ pub fn set_autonomous_movement(
 }
 
 #[tauri::command]
+pub fn set_sleep_after_minutes(
+    app: AppHandle,
+    window: WebviewWindow,
+    minutes: u32,
+) -> Result<RuntimeState, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    if !SLEEP_AFTER_MINUTE_OPTIONS.contains(&minutes) {
+        return Err("睡眠等待时间只支持从角色工坊提供的预设值中选择".to_owned());
+    }
+
+    let state = app.state::<AppState>();
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
+    let snapshot = state
+        .update(|runtime| runtime.sleep_after_minutes = minutes)
+        .map_err(|error| error.to_string())?;
+    windows::emit_runtime_state(&app, &snapshot);
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn reset_pet_position(app: AppHandle, window: WebviewWindow) -> Result<RuntimeState, String> {
     ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
     let snapshot = windows::reset_pet_position(&app)?;
@@ -150,6 +177,19 @@ pub fn adjust_pet_scale(
 pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeState, String> {
     ensure_caller(&window, &[windows::PET_LABEL])?;
     let state = app.state::<AppState>();
+    let current = state.snapshot().map_err(|error| error.to_string())?;
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
+    if current.last_behavior_state == "sleep" {
+        let drag_result = window.start_dragging();
+        windows::restore_previous_foreground();
+        if let Err(error) = drag_result {
+            return Err(error.to_string());
+        }
+        windows::schedule_position_persist(window);
+        return state.snapshot().map_err(|error| error.to_string());
+    }
     let dragging = state
         .update(|runtime| {
             runtime.last_behavior_state =
@@ -183,6 +223,42 @@ pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeSt
 pub fn trigger_pet_tap(app: AppHandle, window: WebviewWindow) -> Result<RuntimeState, String> {
     ensure_caller(&window, &[windows::PET_LABEL])?;
     let state = app.state::<AppState>();
+    let current = state.snapshot().map_err(|error| error.to_string())?;
+    if current.last_behavior_state == "sleep"
+        && !current.paused
+        && current.visible
+        && !current.click_through
+    {
+        let click_count = state
+            .register_sleep_click()
+            .map_err(|error| error.to_string())?;
+        let next = if click_count >= 3 {
+            state
+                .update(|runtime| {
+                    runtime.last_behavior_state =
+                        behavior::transition(&runtime.last_behavior_state, BehaviorEvent::Wake)
+                            .to_owned();
+                })
+                .map_err(|error| error.to_string())?
+        } else {
+            current
+        };
+        windows::emit_runtime_state(&app, &next);
+        windows::restore_previous_foreground();
+        if next.last_behavior_state == "wake" {
+            windows::schedule_behavior_timeout(
+                app,
+                "wake",
+                BehaviorEvent::AnimationFinished,
+                std::time::Duration::from_millis(650),
+            );
+        }
+        return Ok(next);
+    }
+
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
     let tapped = state
         .update(|runtime| {
             if !runtime.paused && runtime.visible && !runtime.click_through {
@@ -263,8 +339,11 @@ pub fn set_pet_visible_internal(app: &AppHandle, visible: bool) -> Result<Runtim
         pet.hide().map_err(|error| error.to_string())?;
     }
 
-    let snapshot = app
-        .state::<AppState>()
+    let state = app.state::<AppState>();
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
+    let snapshot = state
         .update(|runtime| {
             runtime.visible = visible;
             if !visible {
@@ -278,8 +357,11 @@ pub fn set_pet_visible_internal(app: &AppHandle, visible: bool) -> Result<Runtim
 }
 
 pub fn set_paused_internal(app: &AppHandle, paused: bool) -> Result<RuntimeState, String> {
-    let snapshot = app
-        .state::<AppState>()
+    let state = app.state::<AppState>();
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
+    let snapshot = state
         .update(|runtime| {
             runtime.paused = paused;
             runtime.last_behavior_state = "idle".to_owned();
@@ -298,8 +380,11 @@ pub fn set_click_through_internal(
     pet.set_ignore_cursor_events(click_through)
         .map_err(|error| error.to_string())?;
 
-    let snapshot = app
-        .state::<AppState>()
+    let state = app.state::<AppState>();
+    state
+        .clear_wake_clicks()
+        .map_err(|error| error.to_string())?;
+    let snapshot = state
         .update(|runtime| {
             runtime.click_through = click_through;
             if click_through && matches!(runtime.last_behavior_state.as_str(), "tap" | "drag") {

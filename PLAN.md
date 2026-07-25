@@ -3,7 +3,7 @@
 > 文档版本：v0.3
 > 首次编写：2026-07-23
 > 最近更新：2026-07-25
-> 当前状态：Active（0.2.0 双角色离线 Alpha、Gate A 自动探针、安全 `.epet` v1 加载核心、Sprite Atlas 播放器和基础行为状态机已实现；Gate A 仍等待多 DPI、多屏、热插拔、真实拖拽和长稳留证；人物生成 Gate 仍待验证）
+> 当前状态：Active（0.2.0 双角色离线 Alpha、Gate A 自动探针、安全 `.epet` v1 加载核心、Sprite Atlas 播放器和空闲睡眠/受控唤醒状态机已实现；Gate A 仍等待多 DPI、多屏、热插拔和长稳留证；人物生成 Gate 仍待验证）
 > 正式支持：Windows 11 x64
 > 尽力兼容：Windows 10 22H2 x64 / ESU（不承诺跟随微软提供系统级安全支持）
 > 推荐技术路线：Tauri 2 + React/TypeScript + PixiJS + Python/FastAPI + 云端 GPU
@@ -26,12 +26,12 @@
 
 ### 0.1 当前实现快照（0.2.0）
 
-- 已完成阶段 2 的双角色离线纵向切片：内置橘猫、原创 Q 版成年人、角色库切换、透明 Overlay、托盘、置顶切换、自主移动原型、显示器拓扑轮询恢复、SQLite v5 迁移与 NSIS 构建配置。
+- 已完成阶段 2 的双角色离线纵向切片：内置橘猫、原创 Q 版成年人、角色库切换、透明 Overlay、托盘、置顶切换、自主移动原型、显示器拓扑轮询恢复、SQLite v6 迁移与 NSIS 构建配置。
 - Gate A 自动探针已能检查透明角与角色中心的原生命中结果、工作区边界、DPI、`TOOLWINDOW`、`NOACTIVATE`、`TOPMOST` 和真实点击前后的前台窗口；本机 100% DPI 单屏路径通过，其他硬件矩阵仍未冒充通过。
 - 阶段 3 已完成受限 `.epet` v1 内存加载与 SemVer、包外/逐文件 SHA-256、资源上限、路径安全、符号链接、清单和 Atlas 语义校验；下载、原子安装目录与角色库索引仍属于后续闭环。
-- 动画运行时当前采用透明 WebView 可用性更稳的 Canvas 2D Sprite Atlas 播放器，并始终保留静态 PNG 下层降级；状态机已覆盖 `idle ↔ walk`、`idle → sleep`、`any → tap → idle`、`any → drag → drop → idle`。
+- 动画运行时当前采用透明 WebView 可用性更稳的 Canvas 2D Sprite Atlas 播放器，并始终保留静态 PNG 下层降级；状态机已覆盖 `idle ↔ walk`、无操作后 `idle/walk → sleep`、三击 `sleep → wake → idle`、清醒状态下的 `tap → idle` 和 `drag → drop → idle`。
 - 原创人物不对应任何真实人物，素材带透明通道、SHA-256、来源与再分发说明；0.2.0 不接收或上传用户照片。
-- 自动验证已覆盖角色目录、权限边界、SQLite 全新安装与 v2→v5 升级、移动边界与反向、素材哈希和前端生产构建。
+- 自动验证已覆盖角色目录、权限边界、SQLite v6 全新安装与睡眠设置持久化、移动边界与反向、唤醒点击窗口、素材哈希和前端生产构建。
 - Windows 本机一键构建脚本与 GitHub Actions 的 Windows installer 工作流已加入，但 NSIS、DPI、多屏、焦点、穿透和 8 小时长稳仍必须在 Windows 11 留证。
 - 照片生成 API、GPU Worker、Gate B-P/B-H 和公开发布能力仍属于后续阶段，不把离线内置人物表述为已完成 AI 生成人物。
 
@@ -933,7 +933,9 @@ failed / canceled / expired
 boot → idle ↔ walk → idle
              ↘ sleep
 any → tap → idle
-any → drag → drop → idle
+awake any → drag → drop → idle
+sleep → wake → idle
+sleep -- drag window only --> sleep
 ```
 
 运行模式与行为状态正交保存：
@@ -951,6 +953,18 @@ interactive / click_through
 - 状态机沿用本节的正式状态名：`idle` 表示待机，`tap` 表示点击反馈，`walk` 表示移动，`sleep` 表示休息；UI 和渲染层不得再维护一套 `reacting`、`walking`、`resting` 状态。
 - 当前只有一张静态透明 PNG 时，使用 CSS `transform` 完成呼吸、轻微摇摆、压缩和弹跳，保持静态首帧降级路径不依赖 WebGL。
 - 眨眼、摇尾巴、伸懒腰、坐下、张望和真实行走需要多帧 PNG 或 Sprite Atlas；如果制作过程使用身体、眼睛和尾巴分层，交付运行时前仍按冻结决策烘焙为 Sprite Atlas。
+
+睡眠与唤醒规则：
+
+- 角色工坊提供 `1 / 5 / 10 / 20 / 30 分钟 / 永不` 六档无操作入睡时间，默认 10 分钟；设置持久化到本地运行时状态。
+- Windows 端仅通过 `GetLastInputInfo` 读取最后一次鼠标或键盘输入距今时间，不注册全局键盘钩子、不记录按键内容，也不上传输入数据。
+- 达到无操作阈值后，从 `idle` 或 `walk` 进入 `sleep`；睡眠动画继续播放，但自主移动停止。
+- 角色进入 `sleep` 后，普通鼠标移动、键盘输入、点击其他应用或拖拽桌宠窗口都不会唤醒角色。唯一唤醒路径是 4 秒内连续点击桌宠 3 次。
+- 睡眠中的前两次有效点击只触发轻微翻身反馈并继续显示 `Zzz`；第三次进入可选的 `wake` 动作，角色包没有 `wake` 帧时降级到 `idle` 首帧，动作结束后回到 `idle`。
+- 睡眠期间仍允许原生窗口拖拽，但拖拽只更新位置：行为状态保持 `sleep`，松开后继续睡眠，不经过 `drag → drop → idle`；开始拖拽时清空未完成的唤醒点击序列。
+- 隐藏、暂停、切换鼠标穿透、切换角色或修改睡眠等待时间时清空尚未完成的唤醒点击计数。
+- 系统恢复运行后重新读取当前空闲时长，不补播休眠期间已经过期的走路、点击或随机动作；全局输入时间变新也不会自动打断一个已经开始的睡眠。
+- 自主移动计时器只负责 `idle ↔ walk`，不再按固定走路次数强制睡觉，也不再让睡眠在固定秒数后自动结束。
 
 动作扩展顺序：
 

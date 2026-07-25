@@ -24,6 +24,7 @@ pub fn run() {
             windows::initialize_pet_window(app.handle()).map_err(std::io::Error::other)?;
             tray::create(app, &snapshot)?;
             windows::start_autonomous_movement(app.handle());
+            windows::start_inactivity_sleep_monitor(app.handle());
             windows::start_monitor_topology_watcher(app.handle());
             if std::env::args().any(|argument| argument == "--autostart")
                 && let Some(workshop) = app.get_webview_window(windows::WORKSHOP_LABEL)
@@ -41,6 +42,7 @@ pub fn run() {
             commands::set_click_through,
             commands::set_always_on_top,
             commands::set_autonomous_movement,
+            commands::set_sleep_after_minutes,
             commands::reset_pet_position,
             commands::adjust_pet_scale,
             commands::begin_pet_drag,

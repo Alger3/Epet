@@ -17,6 +17,7 @@ type RuntimeCommand =
   | "set_click_through"
   | "set_always_on_top"
   | "set_autonomous_movement"
+  | "set_sleep_after_minutes"
   | "reset_pet_position"
   | "adjust_pet_scale"
   | "begin_pet_drag"
@@ -31,6 +32,7 @@ export interface RuntimeActions {
   setClickThrough(clickThrough: boolean): Promise<void>;
   setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
   setAutonomousMovement(enabled: boolean): Promise<void>;
+  setSleepAfterMinutes(minutes: number): Promise<void>;
   resetPosition(): Promise<void>;
   adjustScale(delta: number): Promise<void>;
   beginDrag(): Promise<void>;
@@ -129,6 +131,11 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
             ? "idle"
             : current.lastBehaviorState,
       })),
+    setSleepAfterMinutes: (minutes) =>
+      execute("set_sleep_after_minutes", { minutes }, (current) => ({
+        ...current,
+        sleepAfterMinutes: minutes,
+      })),
     resetPosition: () => execute("reset_pet_position", {}, (current) => current),
     adjustScale: (delta) =>
       execute("adjust_pet_scale", { delta }, (current) => ({
@@ -138,12 +145,16 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
     beginDrag: () =>
       execute("begin_pet_drag", {}, (current) => ({
         ...current,
-        lastBehaviorState: "drag",
+        lastBehaviorState:
+          current.lastBehaviorState === "sleep" ? "sleep" : "drag",
       })),
     triggerTap: () =>
       execute("trigger_pet_tap", {}, (current) => ({
         ...current,
-        lastBehaviorState: current.paused ? "idle" : "tap",
+        lastBehaviorState:
+          current.paused || current.lastBehaviorState === "sleep"
+            ? current.lastBehaviorState
+            : "tap",
       })),
     restoreFocus: () => execute("restore_pet_focus", {}, (current) => current),
     showWorkshop: () => execute("show_workshop", {}, (current) => current),

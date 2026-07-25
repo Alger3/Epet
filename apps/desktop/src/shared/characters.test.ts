@@ -24,4 +24,9 @@ describe("built-in character catalog", () => {
     expect(isSubjectKind("human_avatar")).toBe(true);
     expect(isSubjectKind("dog")).toBe(false);
   });
+
+  it("provides wake animation metadata for the built-in pet", () => {
+    expect(BUILTIN_CHARACTERS[0].animation?.actions.wake).toBeDefined();
+    expect(BUILTIN_CHARACTERS[0].animation?.actions.wake.loop).toBe(false);
+  });
 });

@@ -20,7 +20,7 @@ const AUTONOMOUS_MOVE_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 const AUTONOMOUS_MOVE_SPEED_LOGICAL: f64 = 48.0;
 const AUTONOMOUS_IDLE_DURATION: Duration = Duration::from_secs(2);
 const AUTONOMOUS_WALK_DURATION: Duration = Duration::from_secs(8);
-const AUTONOMOUS_SLEEP_DURATION: Duration = Duration::from_secs(6);
+const INACTIVITY_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const MONITOR_TOPOLOGY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn show_workshop(app: &AppHandle) -> Result<(), String> {
@@ -202,7 +202,6 @@ pub fn start_autonomous_movement(app: &AppHandle) {
     let app = app.clone();
     thread::spawn(move || {
         let mut direction = -1;
-        let mut walks_completed = 0_u32;
         let mut phase_started = Instant::now();
         let mut last_tick = Instant::now();
         let mut last_persist = Instant::now();
@@ -218,24 +217,6 @@ pub fn start_autonomous_movement(app: &AppHandle) {
                 continue;
             };
             let can_move = can_autonomous_move(&snapshot);
-
-            if snapshot.last_behavior_state == "sleep" {
-                if snapshot.autonomous_movement
-                    && snapshot.visible
-                    && !snapshot.paused
-                    && phase_started.elapsed() >= AUTONOMOUS_SLEEP_DURATION
-                    && let Ok(awake) = state.update(|runtime| {
-                        runtime.last_behavior_state =
-                            behavior::transition(&runtime.last_behavior_state, BehaviorEvent::Wake)
-                                .to_owned();
-                    })
-                {
-                    emit_runtime_state(&app, &awake);
-                    phase_started = Instant::now();
-                }
-                last_tick = Instant::now();
-                continue;
-            }
 
             if !can_move {
                 if snapshot.last_behavior_state == "walk"
@@ -263,14 +244,12 @@ pub fn start_autonomous_movement(app: &AppHandle) {
                     last_tick = Instant::now();
                     continue;
                 }
-                let next_event = if walks_completed > 0 && walks_completed.is_multiple_of(3) {
-                    BehaviorEvent::FallAsleep
-                } else {
-                    BehaviorEvent::StartWalk
-                };
                 if let Ok(next) = state.update(|runtime| {
-                    runtime.last_behavior_state =
-                        behavior::transition(&runtime.last_behavior_state, next_event).to_owned();
+                    runtime.last_behavior_state = behavior::transition(
+                        &runtime.last_behavior_state,
+                        BehaviorEvent::StartWalk,
+                    )
+                    .to_owned();
                 }) {
                     emit_runtime_state(&app, &next);
                 }
@@ -287,7 +266,6 @@ pub fn start_autonomous_movement(app: &AppHandle) {
                 }) {
                     emit_runtime_state(&app, &idle);
                 }
-                walks_completed = walks_completed.saturating_add(1);
                 phase_started = Instant::now();
                 last_tick = Instant::now();
                 continue;
@@ -324,6 +302,35 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             if last_persist.elapsed() >= AUTONOMOUS_MOVE_PERSIST_INTERVAL {
                 let _ = persist_pet_geometry(&app, &window, false);
                 last_persist = Instant::now();
+            }
+        }
+    });
+}
+
+pub fn start_inactivity_sleep_monitor(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(INACTIVITY_POLL_INTERVAL);
+            let state = app.state::<AppState>();
+            if state.is_exiting() {
+                return;
+            }
+
+            let (Ok(snapshot), Some(idle_for)) = (state.snapshot(), system_idle_duration()) else {
+                continue;
+            };
+            if !should_enter_sleep(&snapshot, idle_for) {
+                continue;
+            }
+
+            let _ = state.clear_wake_clicks();
+            if let Ok(sleeping) = state.update(|runtime| {
+                runtime.last_behavior_state =
+                    behavior::transition(&runtime.last_behavior_state, BehaviorEvent::FallAsleep)
+                        .to_owned();
+            }) {
+                emit_runtime_state(&app, &sleeping);
             }
         }
     });
@@ -703,6 +710,37 @@ fn can_autonomous_move(state: &RuntimeState) -> bool {
         && matches!(state.last_behavior_state.as_str(), "idle" | "walk")
 }
 
+fn should_enter_sleep(state: &RuntimeState, idle_for: Duration) -> bool {
+    state.sleep_after_minutes > 0
+        && state.visible
+        && !state.paused
+        && matches!(state.last_behavior_state.as_str(), "idle" | "walk")
+        && idle_for >= Duration::from_secs(u64::from(state.sleep_after_minutes) * 60)
+}
+
+#[cfg(windows)]
+fn system_idle_duration() -> Option<Duration> {
+    use std::mem::size_of;
+    use windows::Win32::System::SystemInformation::GetTickCount;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+    let mut info = LASTINPUTINFO {
+        cbSize: size_of::<LASTINPUTINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetLastInputInfo(&mut info) }.as_bool() {
+        return None;
+    }
+
+    let elapsed_ms = unsafe { GetTickCount() }.wrapping_sub(info.dwTime);
+    Some(Duration::from_millis(u64::from(elapsed_ms)))
+}
+
+#[cfg(not(windows))]
+fn system_idle_duration() -> Option<Duration> {
+    None
+}
+
 #[cfg(not(windows))]
 fn apply_native_pet_styles(_window: &WebviewWindow) -> Result<(), String> {
     Ok(())
@@ -1016,9 +1054,10 @@ fn install_native_hit_test(
 mod tests {
     use super::{
         HitboxRegion, advance_horizontal, autonomous_movement_step, can_autonomous_move,
-        clamp_position, hitboxes_contain,
+        clamp_position, hitboxes_contain, should_enter_sleep,
     };
     use crate::state::RuntimeState;
+    use std::time::Duration;
 
     #[test]
     fn clamps_window_inside_negative_origin_monitor() {
@@ -1085,7 +1124,7 @@ mod tests {
         state.paused = true;
         assert!(!can_autonomous_move(&state));
         state.paused = false;
-        for behavior in ["tap", "drag", "drop", "sleep"] {
+        for behavior in ["tap", "drag", "drop", "sleep", "wake"] {
             state.last_behavior_state = behavior.to_owned();
             assert!(
                 !can_autonomous_move(&state),
@@ -1095,6 +1134,28 @@ mod tests {
         state.last_behavior_state = "idle".to_owned();
         state.autonomous_movement = false;
         assert!(!can_autonomous_move(&state));
+    }
+
+    #[test]
+    fn inactivity_sleep_uses_configured_threshold_and_runtime_guards() {
+        let mut state = RuntimeState {
+            sleep_after_minutes: 10,
+            ..RuntimeState::default()
+        };
+        assert!(!should_enter_sleep(&state, Duration::from_secs(599)));
+        assert!(should_enter_sleep(&state, Duration::from_secs(600)));
+
+        state.last_behavior_state = "walk".to_owned();
+        assert!(should_enter_sleep(&state, Duration::from_secs(600)));
+        state.last_behavior_state = "sleep".to_owned();
+        assert!(!should_enter_sleep(&state, Duration::from_secs(600)));
+
+        state.last_behavior_state = "idle".to_owned();
+        state.sleep_after_minutes = 0;
+        assert!(!should_enter_sleep(&state, Duration::from_secs(3600)));
+        state.sleep_after_minutes = 10;
+        state.paused = true;
+        assert!(!should_enter_sleep(&state, Duration::from_secs(600)));
     }
 
     #[test]

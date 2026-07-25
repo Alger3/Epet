@@ -8,8 +8,10 @@ import { SpriteAtlas } from "./SpriteAtlas";
 export function PetOverlay() {
   const movedRef = useRef(false);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const stirTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, actions] = useRuntimeState();
   const [pressed, setPressed] = useState(false);
+  const [sleepStir, setSleepStir] = useState(false);
   const character = findCharacter(state.activeCharacterId);
 
   const finishPress = (resetMovement = true) => {
@@ -26,9 +28,26 @@ export function PetOverlay() {
     }
   }, [state.lastBehaviorState]);
 
+  useEffect(
+    () => () => {
+      if (stirTimerRef.current !== null) clearTimeout(stirTimerRef.current);
+    },
+    [],
+  );
+
+  const stirSleepingPet = () => {
+    if (stirTimerRef.current !== null) clearTimeout(stirTimerRef.current);
+    setSleepStir(false);
+    requestAnimationFrame(() => setSleepStir(true));
+    stirTimerRef.current = setTimeout(() => {
+      setSleepStir(false);
+      stirTimerRef.current = null;
+    }, 320);
+  };
+
   return (
     <main
-      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""}`}
+      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""} ${sleepStir && state.lastBehaviorState === "sleep" ? "pet-sleep-stir" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         void actions.restoreFocus();
@@ -53,6 +72,7 @@ export function PetOverlay() {
         if (event.button !== 0) {
           void actions.restoreFocus();
         } else if (!moved) {
+          if (state.lastBehaviorState === "sleep") stirSleepingPet();
           void actions.triggerTap();
         }
       }}

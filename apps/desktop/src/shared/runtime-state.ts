@@ -11,7 +11,8 @@ export type BehaviorState =
   | "sleep"
   | "tap"
   | "drag"
-  | "drop";
+  | "drop"
+  | "wake";
 
 export interface RuntimeState {
   activeCharacterId: string;
@@ -29,6 +30,7 @@ export interface RuntimeState {
   clickThrough: boolean;
   alwaysOnTop: boolean;
   autonomousMovement: boolean;
+  sleepAfterMinutes: number;
   paused: boolean;
   lastBehaviorState: BehaviorState;
   diagnostic: string | null;
@@ -51,10 +53,11 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   clickThrough: false,
   alwaysOnTop: true,
   autonomousMovement: false,
+  sleepAfterMinutes: 10,
   paused: false,
   lastBehaviorState: "idle",
   diagnostic: null,
-  runtimeVersion: 5,
+  runtimeVersion: 6,
 };
 
 export function clampScale(scale: number): number {

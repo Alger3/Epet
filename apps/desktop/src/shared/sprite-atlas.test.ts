@@ -30,6 +30,7 @@ describe("sprite atlas actions", () => {
   it("selects requested actions and falls back to idle", () => {
     expect(resolveSpriteAction("tap", definition)).toBe(definition.actions.tap);
     expect(resolveSpriteAction("walk", definition)).toBe(definition.actions.idle);
+    expect(resolveSpriteAction("wake", definition)).toBe(definition.actions.idle);
   });
 
   it("loops idle and holds the last non-looping frame", () => {

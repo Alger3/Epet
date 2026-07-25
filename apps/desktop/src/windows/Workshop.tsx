@@ -161,6 +161,24 @@ export function Workshop() {
               label="自主移动"
               onChange={(value) => void actions.setAutonomousMovement(value)}
             />
+            <label className="setting-row">
+              <span>
+                <strong>无操作后睡觉</strong>
+                <small>读取 Windows 最后输入时间；睡着后仅可在 4 秒内连续点击 3 次唤醒</small>
+              </span>
+              <select
+                aria-label="无操作后睡觉"
+                onChange={(event) => void actions.setSleepAfterMinutes(Number(event.target.value))}
+                value={state.sleepAfterMinutes}
+              >
+                <option value={1}>1 分钟</option>
+                <option value={5}>5 分钟</option>
+                <option value={10}>10 分钟</option>
+                <option value={20}>20 分钟</option>
+                <option value={30}>30 分钟</option>
+                <option value={0}>永不</option>
+              </select>
+            </label>
             <Toggle
               checked={autostart}
               description="登录系统后静默启动到托盘，不主动打开工坊"
@@ -194,6 +212,7 @@ export function Workshop() {
               <div><dt>坐标</dt><dd>{state.x === null ? "自动" : `${Math.round(state.x)}, ${Math.round(state.y ?? 0)}`}</dd></div>
               <div><dt>窗口层级</dt><dd>{state.alwaysOnTop ? "始终置顶" : "普通窗口"}</dd></div>
               <div><dt>自主移动</dt><dd>{state.autonomousMovement ? "已开启" : "已关闭"}</dd></div>
+              <div><dt>自动睡觉</dt><dd>{state.sleepAfterMinutes === 0 ? "永不" : `${state.sleepAfterMinutes} 分钟`}</dd></div>
               <div><dt>状态版本</dt><dd>v{state.runtimeVersion}</dd></div>
             </dl>
           </article>

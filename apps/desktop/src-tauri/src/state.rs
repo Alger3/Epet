@@ -1,16 +1,20 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OptionalExtension, named_params};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 5;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 6;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
+pub const DEFAULT_SLEEP_AFTER_MINUTES: u32 = 10;
+pub const SLEEP_AFTER_MINUTE_OPTIONS: [u32; 6] = [0, 1, 5, 10, 20, 30];
+const WAKE_CLICK_WINDOW: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +34,7 @@ pub struct RuntimeState {
     pub click_through: bool,
     pub always_on_top: bool,
     pub autonomous_movement: bool,
+    pub sleep_after_minutes: u32,
     pub paused: bool,
     pub last_behavior_state: String,
     pub diagnostic: Option<String>,
@@ -54,6 +59,7 @@ impl Default for RuntimeState {
             click_through: false,
             always_on_top: true,
             autonomous_movement: false,
+            sleep_after_minutes: DEFAULT_SLEEP_AFTER_MINUTES,
             paused: false,
             last_behavior_state: "idle".to_owned(),
             diagnostic: None,
@@ -80,9 +86,42 @@ pub enum StateError {
 pub struct AppState {
     runtime: Mutex<RuntimeState>,
     database: Mutex<Connection>,
+    wake_clicks: Mutex<WakeClickTracker>,
     position_generation: AtomicU64,
     recreate_attempted: AtomicBool,
     exiting: AtomicBool,
+}
+
+#[derive(Debug, Default)]
+struct WakeClickTracker {
+    count: u8,
+    last_click: Option<Instant>,
+}
+
+impl WakeClickTracker {
+    fn register(&mut self, now: Instant) -> u8 {
+        self.count = if self
+            .last_click
+            .is_some_and(|last| now.saturating_duration_since(last) <= WAKE_CLICK_WINDOW)
+        {
+            self.count.saturating_add(1)
+        } else {
+            1
+        };
+        self.last_click = Some(now);
+
+        if self.count >= 3 {
+            self.clear();
+            3
+        } else {
+            self.count
+        }
+    }
+
+    fn clear(&mut self) {
+        self.count = 0;
+        self.last_click = None;
+    }
 }
 
 impl AppState {
@@ -107,7 +146,7 @@ impl AppState {
                         work_area_height, dpi_scale, pet_logical_size,
                         foot_anchor_x, foot_anchor_y, scale, visible,
                         click_through, paused, last_behavior_state, runtime_version,
-                        always_on_top, autonomous_movement
+                        always_on_top, autonomous_movement, sleep_after_minutes
                  FROM runtime_state WHERE singleton = 1",
                 [],
                 |row| {
@@ -131,6 +170,7 @@ impl AppState {
                         runtime_version: row.get(15)?,
                         always_on_top: row.get::<_, i64>(16)? != 0,
                         autonomous_movement: row.get::<_, i64>(17)? != 0,
+                        sleep_after_minutes: row.get::<_, i64>(18)? as u32,
                     })
                 },
             )
@@ -152,6 +192,7 @@ impl AppState {
         Ok(Self {
             runtime: Mutex::new(runtime),
             database: Mutex::new(connection),
+            wake_clicks: Mutex::new(WakeClickTracker::default()),
             position_generation: AtomicU64::new(0),
             recreate_attempted: AtomicBool::new(false),
             exiting: AtomicBool::new(false),
@@ -189,6 +230,20 @@ impl AppState {
                 |row| row.get(0),
             )
             .map_err(StateError::from)
+    }
+
+    pub fn register_sleep_click(&self) -> Result<u8, StateError> {
+        self.wake_clicks
+            .lock()
+            .map(|mut clicks| clicks.register(Instant::now()))
+            .map_err(|_| StateError::Poisoned)
+    }
+
+    pub fn clear_wake_clicks(&self) -> Result<(), StateError> {
+        self.wake_clicks
+            .lock()
+            .map(|mut clicks| clicks.clear())
+            .map_err(|_| StateError::Poisoned)
     }
 
     pub fn next_position_generation(&self) -> u64 {
@@ -234,6 +289,9 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     if version < 5 {
         connection.execute_batch(include_str!("../migrations/0005-autonomous-movement.sql"))?;
     }
+    if version < 6 {
+        connection.execute_batch(include_str!("../migrations/0006-inactivity-sleep.sql"))?;
+    }
     Ok(())
 }
 
@@ -243,12 +301,14 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            singleton, active_pet_id, active_character_id, monitor_id, x, y, work_area_width,
            work_area_height, dpi_scale, pet_logical_size, foot_anchor_x,
            foot_anchor_y, scale, visible, click_through, paused,
-           last_behavior_state, runtime_version, always_on_top, autonomous_movement
+           last_behavior_state, runtime_version, always_on_top, autonomous_movement,
+           sleep_after_minutes
          ) VALUES (
            1, :active_character_id, :active_character_id, :monitor_id, :x, :y, :work_area_width,
            :work_area_height, :dpi_scale, :pet_logical_size, :foot_anchor_x,
            :foot_anchor_y, :scale, :visible, :click_through, :paused,
-           :last_behavior_state, :runtime_version, :always_on_top, :autonomous_movement
+           :last_behavior_state, :runtime_version, :always_on_top, :autonomous_movement,
+           :sleep_after_minutes
          )
          ON CONFLICT(singleton) DO UPDATE SET
            active_pet_id = excluded.active_character_id,
@@ -269,7 +329,8 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            last_behavior_state = excluded.last_behavior_state,
            runtime_version = excluded.runtime_version,
            always_on_top = excluded.always_on_top,
-           autonomous_movement = excluded.autonomous_movement",
+           autonomous_movement = excluded.autonomous_movement,
+           sleep_after_minutes = excluded.sleep_after_minutes",
         named_params! {
             ":active_character_id": state.active_character_id,
             ":monitor_id": state.monitor_id,
@@ -289,7 +350,65 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
             ":runtime_version": state.runtime_version,
             ":always_on_top": i64::from(state.always_on_top),
             ":autonomous_movement": i64::from(state.autonomous_movement),
+            ":sleep_after_minutes": i64::from(state.sleep_after_minutes),
         },
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        RUNTIME_SCHEMA_VERSION, RuntimeState, WAKE_CLICK_WINDOW, WakeClickTracker,
+        apply_migrations, persist_runtime,
+    };
+    use rusqlite::Connection;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn three_clicks_inside_window_wake_and_reset_counter() {
+        let mut tracker = WakeClickTracker::default();
+        let start = Instant::now();
+
+        assert_eq!(tracker.register(start), 1);
+        assert_eq!(tracker.register(start + Duration::from_secs(1)), 2);
+        assert_eq!(tracker.register(start + Duration::from_secs(2)), 3);
+        assert_eq!(tracker.register(start + Duration::from_secs(3)), 1);
+    }
+
+    #[test]
+    fn expired_click_window_starts_a_new_sequence() {
+        let mut tracker = WakeClickTracker::default();
+        let start = Instant::now();
+
+        assert_eq!(tracker.register(start), 1);
+        assert_eq!(
+            tracker.register(start + WAKE_CLICK_WINDOW + Duration::from_millis(1)),
+            1
+        );
+    }
+
+    #[test]
+    fn fresh_database_migrates_and_persists_sleep_configuration() {
+        let connection = Connection::open_in_memory().expect("open in-memory database");
+        apply_migrations(&connection).expect("apply migrations");
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read schema version");
+        assert_eq!(version, RUNTIME_SCHEMA_VERSION);
+
+        let state = RuntimeState {
+            sleep_after_minutes: 20,
+            ..RuntimeState::default()
+        };
+        persist_runtime(&connection, &state).expect("persist runtime");
+        let stored: i64 = connection
+            .query_row(
+                "SELECT sleep_after_minutes FROM runtime_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read sleep timeout");
+        assert_eq!(stored, 20);
+    }
 }
