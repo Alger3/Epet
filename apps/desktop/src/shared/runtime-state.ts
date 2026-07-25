@@ -5,7 +5,7 @@ export const MAX_CHARACTER_SCALE = 1.5;
 export const MIN_PET_SCALE = MIN_CHARACTER_SCALE;
 export const MAX_PET_SCALE = MAX_CHARACTER_SCALE;
 
-export type BehaviorState = "idle" | "drag" | "paused";
+export type BehaviorState = "idle" | "walk" | "drag" | "paused";
 
 export interface RuntimeState {
   activeCharacterId: string;
@@ -22,8 +22,10 @@ export interface RuntimeState {
   visible: boolean;
   clickThrough: boolean;
   alwaysOnTop: boolean;
+  autonomousMovement: boolean;
   paused: boolean;
   lastBehaviorState: BehaviorState;
+  diagnostic: string | null;
   runtimeVersion: number;
 }
 
@@ -42,9 +44,11 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   visible: true,
   clickThrough: false,
   alwaysOnTop: true,
+  autonomousMovement: false,
   paused: false,
   lastBehaviorState: "idle",
-  runtimeVersion: 4,
+  diagnostic: null,
+  runtimeVersion: 5,
 };
 
 export function clampScale(scale: number): number {
@@ -53,4 +57,11 @@ export function clampScale(scale: number): number {
   }
 
   return Math.min(MAX_CHARACTER_SCALE, Math.max(MIN_CHARACTER_SCALE, scale));
+}
+
+export function shouldReleasePressedState(
+  moved: boolean,
+  behaviorState: BehaviorState,
+): boolean {
+  return moved && behaviorState !== "drag";
 }

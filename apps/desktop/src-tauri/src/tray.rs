@@ -11,6 +11,7 @@ pub struct TrayControls {
     visible: CheckMenuItem<Wry>,
     click_through: CheckMenuItem<Wry>,
     always_on_top: CheckMenuItem<Wry>,
+    autonomous_movement: CheckMenuItem<Wry>,
     paused: CheckMenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
 }
@@ -39,6 +40,14 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
         "始终置顶",
         true,
         snapshot.always_on_top,
+        None::<&str>,
+    )?;
+    let autonomous_movement = CheckMenuItem::with_id(
+        app,
+        "autonomous-movement",
+        "自主移动",
+        true,
+        snapshot.autonomous_movement,
         None::<&str>,
     )?;
     let paused = CheckMenuItem::with_id(
@@ -70,6 +79,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
             &visible,
             &click_through,
             &always_on_top,
+            &autonomous_movement,
             &paused,
             &reset,
             &autostart,
@@ -107,6 +117,14 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
                         commands::set_always_on_top_internal(app, !state.always_on_top)
                     })
                     .map(|_| ()),
+                "autonomous-movement" => app
+                    .state::<AppState>()
+                    .snapshot()
+                    .map_err(|error| error.to_string())
+                    .and_then(|state| {
+                        commands::set_autonomous_movement_internal(app, !state.autonomous_movement)
+                    })
+                    .map(|_| ()),
                 "paused" => app
                     .state::<AppState>()
                     .snapshot()
@@ -125,6 +143,11 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
 
             if let Err(error) = result {
                 eprintln!("tray action failed: {error}");
+                if let Some(state) = app.try_state::<AppState>()
+                    && let Ok(snapshot) = state.set_diagnostic(format!("托盘操作失败：{error}"))
+                {
+                    windows::emit_runtime_state(app, &snapshot);
+                }
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -149,6 +172,7 @@ pub fn create(app: &mut App, snapshot: &RuntimeState) -> tauri::Result<()> {
         visible,
         click_through,
         always_on_top,
+        autonomous_movement,
         paused,
         autostart,
     });
@@ -162,6 +186,9 @@ pub fn sync_checks(app: &AppHandle, snapshot: &RuntimeState) {
     let _ = controls.visible.set_checked(snapshot.visible);
     let _ = controls.click_through.set_checked(snapshot.click_through);
     let _ = controls.always_on_top.set_checked(snapshot.always_on_top);
+    let _ = controls
+        .autonomous_movement
+        .set_checked(snapshot.autonomous_movement);
     let _ = controls.paused.set_checked(snapshot.paused);
 }
 

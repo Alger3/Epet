@@ -5,6 +5,7 @@ import {
   DEFAULT_RUNTIME_STATE,
   MAX_PET_SCALE,
   MIN_PET_SCALE,
+  shouldReleasePressedState,
 } from "./runtime-state";
 
 describe("clampScale", () => {
@@ -19,5 +20,21 @@ describe("clampScale", () => {
 
   it("returns the safe default for non-finite input", () => {
     expect(clampScale(Number.NaN)).toBe(DEFAULT_RUNTIME_STATE.scale);
+  });
+});
+
+describe("shouldReleasePressedState", () => {
+  it("keeps the pressed feedback while native dragging is active", () => {
+    expect(shouldReleasePressedState(true, "drag")).toBe(false);
+  });
+
+  it("releases pressed feedback when dragging settles or is interrupted", () => {
+    expect(shouldReleasePressedState(true, "idle")).toBe(true);
+    expect(shouldReleasePressedState(true, "paused")).toBe(true);
+    expect(shouldReleasePressedState(true, "walk")).toBe(true);
+  });
+
+  it("does not alter a normal non-drag pointer interaction", () => {
+    expect(shouldReleasePressedState(false, "idle")).toBe(false);
   });
 });

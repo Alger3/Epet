@@ -79,8 +79,10 @@ export function Workshop() {
           </div>
         </header>
 
-        {error || autostartError ? (
-          <div className="error-banner" role="alert">{error ?? autostartError}</div>
+        {error || autostartError || state.diagnostic ? (
+          <div className="error-banner" role="alert">
+            {error ?? autostartError ?? state.diagnostic}
+          </div>
         ) : null}
 
         <div className="dashboard-grid">
@@ -154,6 +156,12 @@ export function Workshop() {
               onChange={(value) => void actions.setAlwaysOnTop(value)}
             />
             <Toggle
+              checked={state.autonomousMovement}
+              description="以低频移动桌宠窗口，暂停或拖拽时自动停止"
+              label="自主移动"
+              onChange={(value) => void actions.setAutonomousMovement(value)}
+            />
+            <Toggle
               checked={autostart}
               description="登录系统后静默启动到托盘，不主动打开工坊"
               label="开机启动"
@@ -185,6 +193,7 @@ export function Workshop() {
               <div><dt>显示器</dt><dd>{state.monitorId ?? "等待首次定位"}</dd></div>
               <div><dt>坐标</dt><dd>{state.x === null ? "自动" : `${Math.round(state.x)}, ${Math.round(state.y ?? 0)}`}</dd></div>
               <div><dt>窗口层级</dt><dd>{state.alwaysOnTop ? "始终置顶" : "普通窗口"}</dd></div>
+              <div><dt>自主移动</dt><dd>{state.autonomousMovement ? "已开启" : "已关闭"}</dd></div>
               <div><dt>状态版本</dt><dd>v{state.runtimeVersion}</dd></div>
             </dl>
           </article>

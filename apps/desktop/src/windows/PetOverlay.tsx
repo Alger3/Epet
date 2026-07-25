@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { findCharacter } from "../shared/characters";
+import { shouldReleasePressedState } from "../shared/runtime-state";
 import { useRuntimeState } from "../shared/use-runtime-state";
 
 export function PetOverlay() {
@@ -10,9 +11,23 @@ export function PetOverlay() {
   const [pressed, setPressed] = useState(false);
   const character = findCharacter(state.activeCharacterId);
 
+  const finishPress = () => {
+    movedRef.current = false;
+    pointerStartRef.current = null;
+    setPressed(false);
+  };
+
+  useEffect(() => {
+    if (shouldReleasePressedState(movedRef.current, state.lastBehaviorState)) {
+      movedRef.current = false;
+      pointerStartRef.current = null;
+      setPressed(false);
+    }
+  }, [state.lastBehaviorState]);
+
   return (
     <main
-      className={`pet-overlay pet-overlay-${character.subjectKind} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""}`}
+      className={`pet-overlay pet-overlay-${character.subjectKind} ${state.paused ? "pet-paused" : ""} ${state.lastBehaviorState === "walk" ? "pet-walking" : ""} ${pressed ? "pet-pressed" : ""}`}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => {
         if (event.button !== 0 || state.clickThrough) return;
@@ -28,9 +43,10 @@ export function PetOverlay() {
         void actions.beginDrag();
       }}
       onPointerUp={() => {
-        pointerStartRef.current = null;
-        setPressed(false);
+        finishPress();
       }}
+      onPointerCancel={finishPress}
+      onLostPointerCapture={finishPress}
       onWheel={(event) => {
         event.preventDefault();
         void actions.adjustScale(event.deltaY > 0 ? -0.1 : 0.1);

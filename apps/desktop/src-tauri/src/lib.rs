@@ -21,6 +21,7 @@ pub fn run() {
 
             windows::initialize_pet_window(app.handle()).map_err(std::io::Error::other)?;
             tray::create(app, &snapshot)?;
+            windows::start_autonomous_movement(app.handle());
             if std::env::args().any(|argument| argument == "--autostart")
                 && let Some(workshop) = app.get_webview_window(windows::WORKSHOP_LABEL)
             {
@@ -35,6 +36,7 @@ pub fn run() {
             commands::set_paused,
             commands::set_click_through,
             commands::set_always_on_top,
+            commands::set_autonomous_movement,
             commands::reset_pet_position,
             commands::adjust_pet_scale,
             commands::begin_pet_drag,
@@ -70,8 +72,12 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::ScaleFactorChanged { .. } if label == windows::PET_LABEL => {
-                    if let Some(pet) = app.get_webview_window(windows::PET_LABEL) {
-                        let _ = windows::restore_pet_window(app, &pet);
+                    if let Some(pet) = app.get_webview_window(windows::PET_LABEL)
+                        && let Err(error) = windows::restore_pet_window(app, &pet)
+                        && let Some(state) = app.try_state::<state::AppState>()
+                        && let Ok(snapshot) = state.set_diagnostic(format!("DPI 恢复失败：{error}"))
+                    {
+                        windows::emit_runtime_state(app, &snapshot);
                     }
                 }
                 tauri::WindowEvent::Destroyed if label == windows::PET_LABEL => {
@@ -87,6 +93,12 @@ pub fn run() {
                     let _ = app.run_on_main_thread(move || {
                         if let Err(error) = windows::recreate_pet_window(&callback_app) {
                             eprintln!("pet window recreation failed: {error}");
+                            if let Some(state) = callback_app.try_state::<state::AppState>()
+                                && let Ok(snapshot) =
+                                    state.set_diagnostic(format!("桌宠窗口重建失败：{error}"))
+                            {
+                                windows::emit_runtime_state(&callback_app, &snapshot);
+                            }
                             let _ = windows::show_workshop(&callback_app);
                         }
                     });

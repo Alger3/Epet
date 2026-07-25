@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, WebviewUrl, WebviewWindow,
@@ -12,6 +12,9 @@ pub const WORKSHOP_LABEL: &str = "workshop";
 pub const PET_LABEL: &str = "pet-overlay";
 const PET_BASE_SIZE: f64 = 320.0;
 const SAFE_MARGIN_LOGICAL: f64 = 24.0;
+const AUTONOMOUS_MOVE_TICK: Duration = Duration::from_millis(100);
+const AUTONOMOUS_MOVE_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+const AUTONOMOUS_MOVE_SPEED_LOGICAL: f64 = 48.0;
 
 pub fn show_workshop(app: &AppHandle) -> Result<(), String> {
     let window = app
@@ -184,38 +187,135 @@ pub fn schedule_position_persist(window: WebviewWindow) {
         let Some(window) = app.get_webview_window(PET_LABEL) else {
             return;
         };
-        let Ok(position) = window.outer_position() else {
-            return;
-        };
-        let Ok(size) = window.outer_size() else {
-            return;
-        };
-        let Ok(Some(monitor)) = window.current_monitor() else {
-            return;
-        };
-        let bounds = monitor_bounds(&monitor);
-        let (x, y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
-        if (x, y) != (position.x, position.y) {
-            let _ = window.set_position(PhysicalPosition::new(x, y));
-        }
-        let scale = state.snapshot().map(|state| state.scale).unwrap_or(1.0);
-        let geometry = geometry_snapshot(&monitor, PhysicalPosition::new(x, y), size, scale);
-        let Ok(snapshot) = state.update(|runtime| {
-            apply_geometry(runtime, &geometry);
-            if runtime.last_behavior_state == "drag" {
-                runtime.last_behavior_state = "idle".to_owned();
-            }
-        }) else {
-            return;
-        };
+        let _ = persist_pet_geometry(&app, &window, true);
+    });
+}
 
-        emit_runtime_state(&app, &snapshot);
-        crate::tray::sync_checks(&app, &snapshot);
+pub fn start_autonomous_movement(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let mut direction = -1;
+        let mut moving = false;
+        let mut last_tick = Instant::now();
+        let mut last_persist = Instant::now();
+
+        loop {
+            thread::sleep(AUTONOMOUS_MOVE_TICK);
+            let state = app.state::<AppState>();
+            if state.is_exiting() {
+                return;
+            }
+
+            let Ok(snapshot) = state.snapshot() else {
+                continue;
+            };
+            let can_move = snapshot.autonomous_movement
+                && snapshot.visible
+                && !snapshot.paused
+                && matches!(snapshot.last_behavior_state.as_str(), "idle" | "walk");
+
+            if !can_move {
+                if moving
+                    && snapshot.last_behavior_state == "walk"
+                    && let Ok(idle) =
+                        state.update(|runtime| runtime.last_behavior_state = "idle".to_owned())
+                {
+                    emit_runtime_state(&app, &idle);
+                }
+                moving = false;
+                last_tick = Instant::now();
+                continue;
+            }
+
+            let Some(window) = app.get_webview_window(PET_LABEL) else {
+                moving = false;
+                continue;
+            };
+            let Ok(position) = window.outer_position() else {
+                continue;
+            };
+            let Ok(size) = window.outer_size() else {
+                continue;
+            };
+            let Ok(Some(monitor)) = window.current_monitor() else {
+                continue;
+            };
+
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_tick).as_secs_f64();
+            last_tick = now;
+            let step = (AUTONOMOUS_MOVE_SPEED_LOGICAL * monitor.scale_factor() * elapsed)
+                .round()
+                .max(1.0) as i32;
+            let (x, y, next_direction) = advance_horizontal(
+                position.x,
+                size.width,
+                size.height,
+                monitor_bounds(&monitor),
+                direction,
+                step,
+            );
+            direction = next_direction;
+
+            if !moving {
+                if let Ok(walking) =
+                    state.update(|runtime| runtime.last_behavior_state = "walk".to_owned())
+                {
+                    emit_runtime_state(&app, &walking);
+                }
+                moving = true;
+            }
+
+            if window.set_position(PhysicalPosition::new(x, y)).is_err() {
+                continue;
+            }
+
+            if last_persist.elapsed() >= AUTONOMOUS_MOVE_PERSIST_INTERVAL {
+                let _ = persist_pet_geometry(&app, &window, false);
+                last_persist = Instant::now();
+            }
+        }
     });
 }
 
 pub fn emit_runtime_state(app: &AppHandle, state: &RuntimeState) {
     let _ = app.emit("runtime-state-changed", state.clone());
+}
+
+fn persist_pet_geometry(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    settle_drag: bool,
+) -> Result<RuntimeState, String> {
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let size = window.outer_size().map_err(|error| error.to_string())?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "桌宠窗口当前不在可用显示器中".to_owned())?;
+    let bounds = monitor_bounds(&monitor);
+    let (x, y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
+    if (x, y) != (position.x, position.y) {
+        window
+            .set_position(PhysicalPosition::new(x, y))
+            .map_err(|error| error.to_string())?;
+    }
+
+    let state = app.state::<AppState>();
+    let scale = state.snapshot().map_err(|error| error.to_string())?.scale;
+    let geometry = geometry_snapshot(&monitor, PhysicalPosition::new(x, y), size, scale);
+    let snapshot = state
+        .update(|runtime| {
+            apply_geometry(runtime, &geometry);
+            if settle_drag && runtime.last_behavior_state == "drag" {
+                runtime.last_behavior_state = "idle".to_owned();
+            }
+        })
+        .map_err(|error| error.to_string())?;
+
+    emit_runtime_state(app, &snapshot);
+    crate::tray::sync_checks(app, &snapshot);
+    Ok(snapshot)
 }
 
 fn apply_pet_size(window: &WebviewWindow, scale: f64) -> Result<(), String> {
@@ -397,6 +497,32 @@ fn clamp_position(
     (x.clamp(left, max_x), y.clamp(top, max_y))
 }
 
+fn advance_horizontal(
+    x: i32,
+    width: u32,
+    height: u32,
+    bounds: (i32, i32, i32, i32),
+    direction: i32,
+    step: i32,
+) -> (i32, i32, i32) {
+    let (left, _top, right, bottom) = bounds;
+    let max_x = (right - width as i32).max(left);
+    let y = (bottom - height as i32).max(bounds.1);
+    let requested = if direction < 0 {
+        x.saturating_sub(step.max(1))
+    } else {
+        x.saturating_add(step.max(1))
+    };
+
+    if requested <= left {
+        (left, y, 1)
+    } else if requested >= max_x {
+        (max_x, y, -1)
+    } else {
+        (requested, y, if direction < 0 { -1 } else { 1 })
+    }
+}
+
 #[cfg(not(windows))]
 fn apply_native_pet_styles(_window: &WebviewWindow) -> Result<(), String> {
     Ok(())
@@ -421,7 +547,7 @@ fn apply_native_pet_styles(window: &WebviewWindow) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::clamp_position;
+    use super::{advance_horizontal, clamp_position};
 
     #[test]
     fn clamps_window_inside_negative_origin_monitor() {
@@ -436,6 +562,34 @@ mod tests {
         assert_eq!(
             clamp_position(100, 100, 1200, 900, (0, 0, 800, 600)),
             (0, 0)
+        );
+    }
+
+    #[test]
+    fn autonomous_movement_stays_on_the_work_area_floor() {
+        assert_eq!(
+            advance_horizontal(400, 320, 320, (0, 0, 1920, 1040), -1, 5),
+            (395, 720, -1)
+        );
+    }
+
+    #[test]
+    fn autonomous_movement_reverses_at_both_edges() {
+        assert_eq!(
+            advance_horizontal(1, 320, 320, (0, 0, 1920, 1040), -1, 5),
+            (0, 720, 1)
+        );
+        assert_eq!(
+            advance_horizontal(1599, 320, 320, (0, 0, 1920, 1040), 1, 5),
+            (1600, 720, -1)
+        );
+    }
+
+    #[test]
+    fn autonomous_movement_supports_negative_origin_monitors() {
+        assert_eq!(
+            advance_horizontal(-1919, 320, 320, (-1920, 0, 0, 1080), -1, 5),
+            (-1920, 760, 1)
         );
     }
 }

@@ -16,6 +16,7 @@ type RuntimeCommand =
   | "set_active_character"
   | "set_click_through"
   | "set_always_on_top"
+  | "set_autonomous_movement"
   | "reset_pet_position"
   | "adjust_pet_scale"
   | "begin_pet_drag"
@@ -27,6 +28,7 @@ export interface RuntimeActions {
   setPaused(paused: boolean): Promise<void>;
   setClickThrough(clickThrough: boolean): Promise<void>;
   setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
+  setAutonomousMovement(enabled: boolean): Promise<void>;
   resetPosition(): Promise<void>;
   adjustScale(delta: number): Promise<void>;
   beginDrag(): Promise<void>;
@@ -113,6 +115,15 @@ export function useRuntimeState(): [RuntimeState, RuntimeActions, string | null]
       execute("set_always_on_top", { alwaysOnTop }, (current) => ({
         ...current,
         alwaysOnTop,
+      })),
+    setAutonomousMovement: (enabled) =>
+      execute("set_autonomous_movement", { enabled }, (current) => ({
+        ...current,
+        autonomousMovement: enabled,
+        lastBehaviorState:
+          !enabled && current.lastBehaviorState === "walk"
+            ? "idle"
+            : current.lastBehaviorState,
       })),
     resetPosition: () => execute("reset_pet_position", {}, (current) => current),
     adjustScale: (delta) =>

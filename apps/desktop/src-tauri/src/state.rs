@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 4;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 5;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
@@ -29,8 +29,10 @@ pub struct RuntimeState {
     pub visible: bool,
     pub click_through: bool,
     pub always_on_top: bool,
+    pub autonomous_movement: bool,
     pub paused: bool,
     pub last_behavior_state: String,
+    pub diagnostic: Option<String>,
     pub runtime_version: i64,
 }
 
@@ -51,8 +53,10 @@ impl Default for RuntimeState {
             visible: true,
             click_through: false,
             always_on_top: true,
+            autonomous_movement: false,
             paused: false,
             last_behavior_state: "idle".to_owned(),
+            diagnostic: None,
             runtime_version: RUNTIME_SCHEMA_VERSION,
         }
     }
@@ -76,7 +80,6 @@ pub enum StateError {
 pub struct AppState {
     runtime: Mutex<RuntimeState>,
     database: Mutex<Connection>,
-    diagnostic: Mutex<Option<String>>,
     position_generation: AtomicU64,
     recreate_attempted: AtomicBool,
     exiting: AtomicBool,
@@ -104,7 +107,7 @@ impl AppState {
                         work_area_height, dpi_scale, pet_logical_size,
                         foot_anchor_x, foot_anchor_y, scale, visible,
                         click_through, paused, last_behavior_state, runtime_version,
-                        always_on_top
+                        always_on_top, autonomous_movement
                  FROM runtime_state WHERE singleton = 1",
                 [],
                 |row| {
@@ -124,8 +127,10 @@ impl AppState {
                         click_through: row.get::<_, i64>(12)? != 0,
                         paused: row.get::<_, i64>(13)? != 0,
                         last_behavior_state: row.get(14)?,
+                        diagnostic: None,
                         runtime_version: row.get(15)?,
                         always_on_top: row.get::<_, i64>(16)? != 0,
+                        autonomous_movement: row.get::<_, i64>(17)? != 0,
                     })
                 },
             )
@@ -147,7 +152,6 @@ impl AppState {
         Ok(Self {
             runtime: Mutex::new(runtime),
             database: Mutex::new(connection),
-            diagnostic: Mutex::new(None),
             position_generation: AtomicU64::new(0),
             recreate_attempted: AtomicBool::new(false),
             exiting: AtomicBool::new(false),
@@ -195,16 +199,9 @@ impl AppState {
         self.position_generation.load(Ordering::SeqCst)
     }
 
-    pub fn set_diagnostic(&self, message: impl Into<String>) -> Result<(), StateError> {
-        *self.diagnostic.lock().map_err(|_| StateError::Poisoned)? = Some(message.into());
-        Ok(())
-    }
-
-    pub fn diagnostic(&self) -> Result<Option<String>, StateError> {
-        self.diagnostic
-            .lock()
-            .map(|value| value.clone())
-            .map_err(|_| StateError::Poisoned)
+    pub fn set_diagnostic(&self, message: impl Into<String>) -> Result<RuntimeState, StateError> {
+        let message = message.into();
+        self.update(|runtime| runtime.diagnostic = Some(message))
     }
 
     pub fn claim_recreate_attempt(&self) -> bool {
@@ -234,6 +231,9 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     if version < 4 {
         connection.execute_batch(include_str!("../migrations/0004-always-on-top.sql"))?;
     }
+    if version < 5 {
+        connection.execute_batch(include_str!("../migrations/0005-autonomous-movement.sql"))?;
+    }
     Ok(())
 }
 
@@ -243,12 +243,12 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            singleton, active_pet_id, active_character_id, monitor_id, x, y, work_area_width,
            work_area_height, dpi_scale, pet_logical_size, foot_anchor_x,
            foot_anchor_y, scale, visible, click_through, paused,
-           last_behavior_state, runtime_version, always_on_top
+           last_behavior_state, runtime_version, always_on_top, autonomous_movement
          ) VALUES (
            1, :active_character_id, :active_character_id, :monitor_id, :x, :y, :work_area_width,
            :work_area_height, :dpi_scale, :pet_logical_size, :foot_anchor_x,
            :foot_anchor_y, :scale, :visible, :click_through, :paused,
-           :last_behavior_state, :runtime_version, :always_on_top
+           :last_behavior_state, :runtime_version, :always_on_top, :autonomous_movement
          )
          ON CONFLICT(singleton) DO UPDATE SET
            active_pet_id = excluded.active_character_id,
@@ -268,7 +268,8 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            paused = excluded.paused,
            last_behavior_state = excluded.last_behavior_state,
            runtime_version = excluded.runtime_version,
-           always_on_top = excluded.always_on_top",
+           always_on_top = excluded.always_on_top,
+           autonomous_movement = excluded.autonomous_movement",
         named_params! {
             ":active_character_id": state.active_character_id,
             ":monitor_id": state.monitor_id,
@@ -287,6 +288,7 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
             ":last_behavior_state": state.last_behavior_state,
             ":runtime_version": state.runtime_version,
             ":always_on_top": i64::from(state.always_on_top),
+            ":autonomous_movement": i64::from(state.autonomous_movement),
         },
     )?;
     Ok(())

@@ -81,12 +81,13 @@ describe("desktop shell configuration", () => {
     expect(migration).toContain("PRAGMA user_version = 3");
   });
 
-  it("executes fresh and v2-to-v4 SQLite migration paths", () => {
+  it("executes fresh and v2-to-v5 SQLite migration paths", () => {
     const migrationUrls = [
       "../../src-tauri/migrations/0001-runtime-state.sql",
       "../../src-tauri/migrations/0002-monitor-restoration.sql",
       "../../src-tauri/migrations/0003-character-library.sql",
       "../../src-tauri/migrations/0004-always-on-top.sql",
+      "../../src-tauri/migrations/0005-autonomous-movement.sql",
     ];
     const migrations = migrationUrls.map((url) =>
       readFileSync(new URL(url, import.meta.url), "utf8"),
@@ -98,7 +99,7 @@ describe("desktop shell configuration", () => {
     const characterCount = fresh.prepare("SELECT COUNT(*) AS count FROM characters").get() as {
       count: number;
     };
-    expect(freshVersion.user_version).toBe(4);
+    expect(freshVersion.user_version).toBe(5);
     expect(characterCount.count).toBe(2);
     fresh.close();
 
@@ -116,19 +117,22 @@ describe("desktop shell configuration", () => {
     `);
     upgrade.exec(migrations[2]);
     upgrade.exec(migrations[3]);
+    upgrade.exec(migrations[4]);
     const migrated = upgrade
       .prepare(
-        "SELECT active_pet_id, active_character_id, always_on_top FROM runtime_state WHERE singleton = 1",
+        "SELECT active_pet_id, active_character_id, always_on_top, autonomous_movement FROM runtime_state WHERE singleton = 1",
       )
       .get() as {
         active_pet_id: string;
         active_character_id: string;
         always_on_top: number;
+        autonomous_movement: number;
       };
     expect(migrated).toEqual({
       active_pet_id: "builtin-orange-tabby",
       active_character_id: "builtin-orange-tabby",
       always_on_top: 1,
+      autonomous_movement: 0,
     });
     upgrade.close();
   });
@@ -153,6 +157,19 @@ describe("desktop shell configuration", () => {
       /pub fn set_always_on_top[\s\S]*?ensure_caller\(&window, &\[windows::WORKSHOP_LABEL\]\)\?/,
     );
     expect(commands).toMatch(/set_always_on_top_internal[\s\S]*?runtime\.always_on_top/);
+  });
+
+  it("keeps autonomous movement behind a caller-validated Rust command", () => {
+    const commands = readFileSync(
+      new URL("../../src-tauri/src/commands.rs", import.meta.url),
+      "utf8",
+    );
+    expect(commands).toMatch(
+      /pub fn set_autonomous_movement[\s\S]*?ensure_caller\(&window, &\[windows::WORKSHOP_LABEL\]\)\?/,
+    );
+    expect(commands).toMatch(
+      /set_autonomous_movement_internal[\s\S]*?runtime\.autonomous_movement/,
+    );
   });
 
   it("ships the declared transparent human avatar without hash drift", () => {

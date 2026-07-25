@@ -95,6 +95,16 @@ pub fn set_always_on_top(
 }
 
 #[tauri::command]
+pub fn set_autonomous_movement(
+    app: AppHandle,
+    window: WebviewWindow,
+    enabled: bool,
+) -> Result<RuntimeState, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    set_autonomous_movement_internal(&app, enabled)
+}
+
+#[tauri::command]
 pub fn reset_pet_position(app: AppHandle, window: WebviewWindow) -> Result<RuntimeState, String> {
     ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
     let snapshot = windows::reset_pet_position(&app)?;
@@ -242,6 +252,24 @@ pub fn set_always_on_top_internal(
     let snapshot = app
         .state::<AppState>()
         .update(|runtime| runtime.always_on_top = always_on_top)
+        .map_err(|error| error.to_string())?;
+    windows::emit_runtime_state(app, &snapshot);
+    tray::sync_checks(app, &snapshot);
+    Ok(snapshot)
+}
+
+pub fn set_autonomous_movement_internal(
+    app: &AppHandle,
+    enabled: bool,
+) -> Result<RuntimeState, String> {
+    let snapshot = app
+        .state::<AppState>()
+        .update(|runtime| {
+            runtime.autonomous_movement = enabled;
+            if !enabled && runtime.last_behavior_state == "walk" {
+                runtime.last_behavior_state = "idle".to_owned();
+            }
+        })
         .map_err(|error| error.to_string())?;
     windows::emit_runtime_state(app, &snapshot);
     tray::sync_checks(app, &snapshot);

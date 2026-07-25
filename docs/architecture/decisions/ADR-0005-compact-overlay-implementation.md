@@ -4,6 +4,7 @@
 > 负责人：桌面端负责人
 > 评审人：技术负责人、测试负责人、安全负责人
 > 日期：2026-07-24
+> 最近验证：2026-07-25
 > 取代：无
 > 被取代：无
 
@@ -16,6 +17,8 @@
 阶段 2 原型采用随宠物尺寸缩放的小型方形 Tauri 窗口；用户拖动调用原生 `start_dragging`，位置写入 250 ms 防抖。Windows 增加 `WS_EX_NOACTIVATE` 与 `WS_EX_TOOLWINDOW`，Tauri 配置同时使用无边框、置顶、跳过任务栏和初始不聚焦。
 
 窗口移动而不是只移动 PixiJS 内部 Sprite。缩放以宠物脚底为锚点，窗口坐标始终由 Rust 使用物理像素、工作区和 DPI 换算。完全穿透使用原生 `set_ignore_cursor_events`，托盘保留恢复入口。
+
+当前 Gate A 原型已经采用独立 Rust 时钟以 10 Hz 移动系统窗口，速度按显示器 DPI 换算，沿工作区底部水平移动并在边界反向；CSS/Sprite 动画不负责系统窗口坐标。暂停、隐藏和拖拽优先于移动，位置至少每秒持久化。该实现只完成代码与单机 100% DPI 验证，尚未满足本 ADR 的全部接受条件。
 
 ## 备选方案
 
@@ -42,4 +45,5 @@
 
 - [桌面壳架构](../desktop-shell.md)
 - [阶段 2 测试计划](../../testing/phase-2-desktop-shell-test-plan.md)
+- [Gate A 进度记录](../../testing/gate-a-progress-2026-07-25.md)
 - [PLAN](../../../PLAN.md)
