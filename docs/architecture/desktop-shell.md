@@ -3,7 +3,7 @@
 > 状态：Active
 > 负责人：桌面端负责人
 > 评审人：技术负责人、安全负责人、测试负责人
-> 最近更新：2026-07-25
+> 最近更新：2026-07-26
 > 更新触发：窗口生命周期、Tauri Command、SQLite 状态、托盘或显示器恢复规则变化
 
 ## 目的
@@ -12,7 +12,7 @@
 
 ## 范围
 
-包含 Tauri 进程、React 工坊、静态首帧 Overlay、内置猫咪/Q版人物、系统托盘、单实例、开机启动、自主移动窗口原型、SQLite 运行状态和 Windows 多屏坐标恢复。不包含照片生成云端 API、角色包安全导入、完整随机行为状态机和发布签名。
+包含 Tauri 进程、React 工坊、Sprite Atlas Overlay、内置及已安装角色、系统托盘、单实例、开机启动、自主移动、SQLite 运行/草稿/角色索引、本地照片清洗和 Windows 多屏坐标恢复。不包含阶段 5 的照片生成云端 API、GPU 流水线和发布签名。
 
 ## 组件与依赖
 
@@ -44,11 +44,11 @@ tray menu ───────内部领域调用───┘          │
 
 ## 状态一致性
 
-`runtime_state` 是单行 SQLite 快照，当前 `runtime_version = 5`。`characters` 保存内置角色索引，`active_character_id` 从旧 `active_pet_id` 兼容迁移。运行快照同时保存置顶和自主移动开关，诊断消息只保存在当前进程内。写入流程固定为：校验调用者/角色存在性 → 执行原生动作 → SQLite upsert → 更新内存快照 → 广播 `runtime-state-changed` → 同步托盘。失败时返回错误，不由 WebView 猜测成功。
+`runtime_state` 是单行 SQLite 快照，当前 `runtime_version = 8`。`characters` 保存内置角色和安装角色索引，`character_versions` 保存内容哈希命名的不可变包版本；`creation_drafts` 与 `draft_photos` 保存可恢复草稿、版本化授权、清洗照片槽位和服务端任务快照。`active_character_id` 从旧 `active_pet_id` 兼容迁移。运行快照同时保存置顶、自主移动和无操作睡眠设置，诊断消息只保存在当前进程内。写入流程固定为：校验调用者/角色存在性 → 执行原生动作 → SQLite upsert → 更新内存快照 → 广播 `runtime-state-changed` → 同步托盘。失败时返回错误，不由 WebView 猜测成功。
 
 位置写入使用 250 ms generation 防抖。开机启动由操作系统注册项保存，不混入 SQLite；查询与修改仍通过 Rust Command，以便校验只能由工坊调用并同步托盘。
 
-自主移动采用独立 Rust 时钟，以 10 Hz 更新系统窗口，不与 CSS/Sprite 动画帧率绑定；速度按当前显示器 DPI 换算。角色沿当前工作区底部水平移动，到左右边界反向，位置每秒持久化。隐藏、暂停和拖拽的优先级高于移动；该实现仍属于 Gate A 原型，完整随机行为由阶段 3 状态机接管。
+自主移动采用独立 Rust 时钟，以 10 Hz 更新系统窗口，不与 CSS/Sprite 动画帧率绑定；速度按当前显示器 DPI 换算。角色沿当前工作区底部水平移动，到左右边界反向，位置每秒持久化。隐藏、暂停和拖拽的优先级高于移动；该实现已通过 Gate A，完整随机行为由阶段 3 状态机接管。
 
 ## 坐标与多显示器
 
@@ -66,7 +66,7 @@ DPI 改变时重新执行恢复；移动/系统重定位后防抖保存。React 
 
 ## 安全边界
 
-两个 capability 均不授予网络、Shell、对话框、剪贴板或任意文件访问。自定义 Command 还要校验 `WebviewWindow.label()`，不能仅依赖前端隐藏按钮。CSP 默认仅允许自身资源、Tauri IPC 和内置图片。
+两个 capability 均不授予 WebView 直接网络、Shell、对话框、剪贴板或任意文件访问。工坊只能通过 Rust 的 `install_pet_package_from_url` 请求 HTTPS `.epet`，该命令限制重定向、下载时间和大小，要求包外 SHA-256，并在完整包内校验后才写入角色库。其他自定义 Command 也要校验 `WebviewWindow.label()`，不能仅依赖前端隐藏按钮。CSP 默认仅允许自身资源、Tauri IPC 和内置图片。
 
 ## 失败与降级
 
@@ -75,11 +75,11 @@ DPI 改变时重新执行恢复；移动/系统重定位后防抖保存。React 
 - 自主移动单次窗口操作失败：保留最后成功位置并在下一低频 Tick 重试；窗口销毁或 DPI 恢复失败仍走统一生命周期诊断。
 - 原显示器丢失：移动到匹配屏或主屏安全区。
 - 开机启动注册失败：保持原状态并向工坊/托盘记录错误。
-- 内置猫咪和原创 Q 版人物始终本地可用，不依赖云端；照片生成入口未配置时保持禁用并显示明确说明。
+- 内置猫咪、原创 Q 版人物和已完整校验的本地 `.epet` 始终不依赖云端；照片生成服务未配置时草稿保持在本地并显示稳定的 `service_unavailable` 状态，不伪造进度。
 
 ## 验证与验收
 
-自动检查覆盖状态边界、窗口配置和能力最小化；目标 Windows 的 DPI、多屏、焦点、托盘、退出与长稳必须执行 [阶段 2 测试计划](../testing/phase-2-desktop-shell-test-plan.md)。在证据归档前，本设计为已实现架构，不代表 Gate A 已通过。
+自动检查覆盖状态边界、窗口配置和能力最小化；目标 Windows 的 DPI、多屏、焦点、托盘、退出与长稳按 [阶段 2 测试计划](../testing/phase-2-desktop-shell-test-plan.md) 执行。Gate A 已于 2026-07-25 验收，相关窗口模型发生实质变化时必须重新运行适用矩阵。
 
 ## 相关链接
 

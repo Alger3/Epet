@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { findCharacter } from "../shared/characters";
 import { shouldReleasePressedState } from "../shared/runtime-state";
+import { useCharacter } from "../shared/use-character";
 import { useRuntimeState } from "../shared/use-runtime-state";
 import { SpriteAtlas } from "./SpriteAtlas";
 
@@ -12,7 +12,7 @@ export function PetOverlay() {
   const [state, actions] = useRuntimeState();
   const [pressed, setPressed] = useState(false);
   const [sleepStir, setSleepStir] = useState(false);
-  const character = findCharacter(state.activeCharacterId);
+  const { character } = useCharacter(state.activeCharacterId);
 
   const finishPress = (resetMovement = true) => {
     if (resetMovement) movedRef.current = false;
@@ -44,6 +44,10 @@ export function PetOverlay() {
       stirTimerRef.current = null;
     }, 320);
   };
+
+  if (!character) {
+    return <main className="pet-overlay pet-paused" aria-label="正在加载桌宠角色" />;
+  }
 
   return (
     <main

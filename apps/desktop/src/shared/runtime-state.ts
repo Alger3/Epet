@@ -57,7 +57,7 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   paused: false,
   lastBehaviorState: "idle",
   diagnostic: null,
-  runtimeVersion: 6,
+  runtimeVersion: 8,
 };
 
 export function clampScale(scale: number): number {

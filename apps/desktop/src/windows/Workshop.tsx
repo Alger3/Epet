@@ -1,7 +1,36 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useRuntimeState } from "../shared/use-runtime-state";
-import { BUILTIN_CHARACTERS, findCharacter } from "../shared/characters";
+import { BUILTIN_CHARACTERS } from "../shared/characters";
+import { useCharacter } from "../shared/use-character";
+import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
+import { CreateCharacterPanel } from "./CreateCharacterPanel";
+import { PrivacyPanel } from "./PrivacyPanel";
+
+type WorkshopPage = "home" | "library" | "create" | "settings" | "privacy";
+
+const PAGE_COPY: Record<WorkshopPage, { title: string; description: string }> = {
+  home: {
+    title: "桌面角色工坊",
+    description: "选择陪伴角色，查看当前桌宠并控制显示状态。",
+  },
+  library: {
+    title: "我的角色",
+    description: "安全安装、更新、回滚和删除本地 .epet 角色包。",
+  },
+  create: {
+    title: "创建角色",
+    description: "猫咪与 Q 版人物使用独立的输入规则、授权门禁和生成流程。",
+  },
+  settings: {
+    title: "运行设置",
+    description: "控制桌宠窗口层级、交互、移动、睡眠和启动行为。",
+  },
+  privacy: {
+    title: "设置与隐私",
+    description: "查看本地数据边界，并单独删除草稿和清理后的照片副本。",
+  },
+};
 
 interface ToggleProps {
   checked: boolean;
@@ -28,9 +57,13 @@ function Toggle({ checked, label, description, onChange }: ToggleProps) {
 
 export function Workshop() {
   const [state, actions, error] = useRuntimeState();
+  const [page, setPage] = useState<WorkshopPage>("home");
   const [autostart, setAutostart] = useState(false);
   const [autostartError, setAutostartError] = useState<string | null>(null);
-  const activeCharacter = findCharacter(state.activeCharacterId);
+  const {
+    character: activeCharacter,
+    error: characterError,
+  } = useCharacter(state.activeCharacterId);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -58,20 +91,51 @@ export function Workshop() {
       <aside className="sidebar">
         <div className="brand-mark" aria-hidden="true">E</div>
         <nav aria-label="主要导航">
-          <button className="nav-item nav-item-active" type="button">角色主页</button>
-          <button className="nav-item" type="button">内置角色</button>
-          <button className="nav-item" disabled type="button">照片生成</button>
-          <button className="nav-item" type="button">运行设置</button>
+          <button
+            className={`nav-item ${page === "home" ? "nav-item-active" : ""}`}
+            onClick={() => setPage("home")}
+            type="button"
+          >
+            角色主页
+          </button>
+          <button
+            className={`nav-item ${page === "library" ? "nav-item-active" : ""}`}
+            onClick={() => setPage("library")}
+            type="button"
+          >
+            我的角色
+          </button>
+          <button
+            className={`nav-item ${page === "create" ? "nav-item-active" : ""}`}
+            onClick={() => setPage("create")}
+            type="button"
+          >
+            创建角色
+          </button>
+          <button
+            className={`nav-item ${page === "settings" ? "nav-item-active" : ""}`}
+            onClick={() => setPage("settings")}
+            type="button"
+          >
+            运行设置
+          </button>
+          <button
+            className={`nav-item ${page === "privacy" ? "nav-item-active" : ""}`}
+            onClick={() => setPage("privacy")}
+            type="button"
+          >
+            设置与隐私
+          </button>
         </nav>
-        <span className="phase-badge">离线 Alpha · 双角色</span>
+        <span className="phase-badge">阶段 4 · 角色工坊</span>
       </aside>
 
       <section className="workspace">
         <header className="workspace-header">
           <div>
             <p className="eyebrow">EPET DESKTOP</p>
-            <h1>桌面角色工坊</h1>
-            <p>选择猫咪或原创 Q 版人物，立即显示到 Windows 桌面并离线运行。</p>
+            <h1>{PAGE_COPY[page].title}</h1>
+            <p>{PAGE_COPY[page].description}</p>
           </div>
           <div className="status-pill">
             <span className={state.visible ? "status-dot status-online" : "status-dot"} />
@@ -79,13 +143,23 @@ export function Workshop() {
           </div>
         </header>
 
-        {error || autostartError || state.diagnostic ? (
+        {error || autostartError || characterError || state.diagnostic ? (
           <div className="error-banner" role="alert">
-            {error ?? autostartError ?? state.diagnostic}
+            {error ?? autostartError ?? characterError ?? state.diagnostic}
           </div>
         ) : null}
 
-        <div className="dashboard-grid">
+        {page === "library" ? (
+          <CharacterLibraryPanel
+            activeCharacterId={state.activeCharacterId}
+            onActivate={actions.setActiveCharacter}
+          />
+        ) : null}
+        {page === "create" ? <CreateCharacterPanel /> : null}
+        {page === "privacy" ? <PrivacyPanel /> : null}
+
+        {page === "home" || page === "settings" ? <div className="dashboard-grid">
+          {page === "home" && activeCharacter ? (
           <article className="pet-card">
             <div className="pet-preview" aria-hidden="true">
               <img src={activeCharacter.assetUrl} alt="" />
@@ -103,7 +177,9 @@ export function Workshop() {
               {state.visible ? "隐藏角色" : "显示到桌面"}
             </button>
           </article>
+          ) : null}
 
+          {page === "home" ? (
           <article className="character-library-card">
             <div>
               <p className="eyebrow">内置角色库</p>
@@ -131,7 +207,9 @@ export function Workshop() {
               照片生成需要后续配置独立 AI 服务；本离线版不会上传照片或伪造生成结果。
             </p>
           </article>
+          ) : null}
 
+          {page === "settings" ? (
           <article className="settings-card">
             <div>
               <p className="eyebrow">运行设置</p>
@@ -203,7 +281,9 @@ export function Workshop() {
               重置到主屏安全位置
             </button>
           </article>
+          ) : null}
 
+          {page === "settings" ? (
           <article className="diagnostics-card">
             <p className="eyebrow">运行快照</p>
             <dl>
@@ -216,7 +296,8 @@ export function Workshop() {
               <div><dt>状态版本</dt><dd>v{state.runtimeVersion}</dd></div>
             </dl>
           </article>
-        </div>
+          ) : null}
+        </div> : null}
       </section>
     </main>
   );

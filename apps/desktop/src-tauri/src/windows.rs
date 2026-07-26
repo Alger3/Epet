@@ -8,6 +8,7 @@ use tauri::{
 
 use crate::{
     behavior::{self, BehaviorEvent},
+    character_store,
     state::{AppState, RuntimeState},
 };
 
@@ -1184,11 +1185,34 @@ pub fn set_pet_hitbox_profile(window: &WebviewWindow, character_id: &str) -> Res
 
     let raw = window.hwnd().map_err(|error| error.to_string())?;
     let hwnd = HWND(raw.0 as *mut _);
+    let hitboxes = if character_id.starts_with("pet_") {
+        let data_root = window
+            .app_handle()
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let state = window.app_handle().state::<AppState>();
+        let database = state.database().map_err(|error| error.to_string())?;
+        character_store::load_runtime_hitboxes(
+            &database,
+            &data_root.join("characters"),
+            character_id,
+        )
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|hitbox| match hitbox.shape.as_str() {
+            "rectangle" => HitboxRegion::rectangle(hitbox.x, hitbox.y, hitbox.width, hitbox.height),
+            _ => HitboxRegion::ellipse(hitbox.x, hitbox.y, hitbox.width, hitbox.height),
+        })
+        .collect()
+    } else {
+        builtin_hitboxes(character_id)
+    };
     PET_HITBOXES
         .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
         .lock()
         .map_err(|_| "桌宠命中区域锁已损坏".to_owned())?
-        .insert(hwnd.0 as isize, builtin_hitboxes(character_id));
+        .insert(hwnd.0 as isize, hitboxes);
     Ok(())
 }
 

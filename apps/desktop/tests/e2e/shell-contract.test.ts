@@ -26,6 +26,19 @@ function readJson<T>(relativeUrl: string): T {
 }
 
 describe("desktop shell configuration", () => {
+  it("keeps the sidebar fixed while only the workspace scrolls", () => {
+    const styles = readFileSync(new URL("../../src/styles.css", import.meta.url), "utf8");
+    expect(styles).toMatch(
+      /html\[data-window="workshop"\][\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden/,
+    );
+    expect(styles).toMatch(
+      /\.workshop-shell\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?overflow:\s*hidden/,
+    );
+    expect(styles).toMatch(
+      /\.workspace\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto/,
+    );
+  });
+
   it("defines separate workshop and least-privilege overlay windows", () => {
     const config = readJson<TauriConfig>("../../src-tauri/tauri.conf.json");
     const workshop = config.app.windows.find((window) => window.label === "workshop");
@@ -81,13 +94,16 @@ describe("desktop shell configuration", () => {
     expect(migration).toContain("PRAGMA user_version = 3");
   });
 
-  it("executes fresh and v2-to-v5 SQLite migration paths", () => {
+  it("executes fresh and v2-to-v8 SQLite migration paths", () => {
     const migrationUrls = [
       "../../src-tauri/migrations/0001-runtime-state.sql",
       "../../src-tauri/migrations/0002-monitor-restoration.sql",
       "../../src-tauri/migrations/0003-character-library.sql",
       "../../src-tauri/migrations/0004-always-on-top.sql",
       "../../src-tauri/migrations/0005-autonomous-movement.sql",
+      "../../src-tauri/migrations/0006-inactivity-sleep.sql",
+      "../../src-tauri/migrations/0007-character-packages.sql",
+      "../../src-tauri/migrations/0008-workshop-drafts.sql",
     ];
     const migrations = migrationUrls.map((url) =>
       readFileSync(new URL(url, import.meta.url), "utf8"),
@@ -99,7 +115,7 @@ describe("desktop shell configuration", () => {
     const characterCount = fresh.prepare("SELECT COUNT(*) AS count FROM characters").get() as {
       count: number;
     };
-    expect(freshVersion.user_version).toBe(5);
+    expect(freshVersion.user_version).toBe(8);
     expect(characterCount.count).toBe(2);
     fresh.close();
 
@@ -118,6 +134,9 @@ describe("desktop shell configuration", () => {
     upgrade.exec(migrations[2]);
     upgrade.exec(migrations[3]);
     upgrade.exec(migrations[4]);
+    upgrade.exec(migrations[5]);
+    upgrade.exec(migrations[6]);
+    upgrade.exec(migrations[7]);
     const migrated = upgrade
       .prepare(
         "SELECT active_pet_id, active_character_id, always_on_top, autonomous_movement FROM runtime_state WHERE singleton = 1",

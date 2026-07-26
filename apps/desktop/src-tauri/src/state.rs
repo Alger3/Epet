@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OptionalExtension, named_params};
@@ -8,12 +8,13 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 6;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 8;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
 pub const DEFAULT_SLEEP_AFTER_MINUTES: u32 = 10;
 pub const SLEEP_AFTER_MINUTE_OPTIONS: [u32; 6] = [0, 1, 5, 10, 20, 30];
+pub const DEFAULT_CHARACTER_ID: &str = "builtin-orange-tabby";
 const WAKE_CLICK_WINDOW: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Debug, Serialize)]
@@ -44,7 +45,7 @@ pub struct RuntimeState {
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
-            active_character_id: "builtin-orange-tabby".to_owned(),
+            active_character_id: DEFAULT_CHARACTER_ID.to_owned(),
             monitor_id: None,
             x: None,
             y: None,
@@ -86,6 +87,8 @@ pub enum StateError {
 pub struct AppState {
     runtime: Mutex<RuntimeState>,
     database: Mutex<Connection>,
+    package_operation: Mutex<()>,
+    workshop_operation: Mutex<()>,
     wake_clicks: Mutex<WakeClickTracker>,
     position_generation: AtomicU64,
     recreate_attempted: AtomicBool,
@@ -192,6 +195,8 @@ impl AppState {
         Ok(Self {
             runtime: Mutex::new(runtime),
             database: Mutex::new(connection),
+            package_operation: Mutex::new(()),
+            workshop_operation: Mutex::new(()),
             wake_clicks: Mutex::new(WakeClickTracker::default()),
             position_generation: AtomicU64::new(0),
             recreate_attempted: AtomicBool::new(false),
@@ -230,6 +235,22 @@ impl AppState {
                 |row| row.get(0),
             )
             .map_err(StateError::from)
+    }
+
+    pub(crate) fn database(&self) -> Result<MutexGuard<'_, Connection>, StateError> {
+        self.database.lock().map_err(|_| StateError::Poisoned)
+    }
+
+    pub(crate) fn package_operation(&self) -> Result<MutexGuard<'_, ()>, StateError> {
+        self.package_operation
+            .lock()
+            .map_err(|_| StateError::Poisoned)
+    }
+
+    pub(crate) fn workshop_operation(&self) -> Result<MutexGuard<'_, ()>, StateError> {
+        self.workshop_operation
+            .lock()
+            .map_err(|_| StateError::Poisoned)
     }
 
     pub fn register_sleep_click(&self) -> Result<u8, StateError> {
@@ -291,6 +312,12 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     }
     if version < 6 {
         connection.execute_batch(include_str!("../migrations/0006-inactivity-sleep.sql"))?;
+    }
+    if version < 7 {
+        connection.execute_batch(include_str!("../migrations/0007-character-packages.sql"))?;
+    }
+    if version < 8 {
+        connection.execute_batch(include_str!("../migrations/0008-workshop-drafts.sql"))?;
     }
     Ok(())
 }

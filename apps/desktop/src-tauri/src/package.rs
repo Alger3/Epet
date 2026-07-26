@@ -12,7 +12,7 @@ use thiserror::Error;
 use zip::ZipArchive;
 
 const RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
-const MAX_COMPRESSED_BYTES: u64 = 30 * 1024 * 1024;
+pub const MAX_COMPRESSED_BYTES: u64 = 30 * 1024 * 1024;
 const MAX_UNCOMPRESSED_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILES: usize = 100;
@@ -149,6 +149,51 @@ pub struct LoadedPackage {
     pub manifest: PetManifest,
     pub atlas: Atlas,
     files: HashMap<String, Vec<u8>>,
+}
+
+impl LoadedPackage {
+    pub fn file(&self, package_path: &str) -> Option<&[u8]> {
+        self.files.get(package_path).map(Vec::as_slice)
+    }
+
+    pub fn thumbnail_path(&self) -> Option<&str> {
+        ["thumbnail.webp", "thumbnail.png"]
+            .into_iter()
+            .find(|path| self.files.contains_key(*path))
+    }
+
+    pub fn extract_to(&self, destination: &Path) -> Result<(), PackageError> {
+        if destination.exists() {
+            return invalid("解包目标已经存在");
+        }
+        std::fs::create_dir(destination)?;
+
+        let result = (|| {
+            for (package_path, content) in &self.files {
+                validate_package_path(package_path)?;
+                let mut output = destination.to_path_buf();
+                for segment in package_path.split('/') {
+                    output.push(segment);
+                }
+                if let Some(parent) = output.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&output)?;
+                use std::io::Write;
+                file.write_all(content)?;
+                file.sync_all()?;
+            }
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = std::fs::remove_dir_all(destination);
+        }
+        result
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -311,13 +356,21 @@ fn validate_manifest(
     if !valid_identifier(&manifest.pet_id, "pet_", 8, 64) {
         return invalid("pet_id 不符合 pet_<8-64 个安全字符>");
     }
-    if manifest.name.is_empty() || manifest.name.chars().count() > 64 {
+    if manifest.name.is_empty()
+        || manifest.name.chars().count() > 64
+        || manifest.name.trim() != manifest.name
+        || manifest.name.chars().any(char::is_control)
+    {
         return invalid("name 长度必须为 1-64 个字符");
     }
     if manifest.species != "cat" || manifest.renderer != "sprite_atlas" {
         return invalid("v1 仅支持 cat + sprite_atlas");
     }
-    if manifest.created_at.is_empty() || !manifest.created_at.contains('T') {
+    if manifest.created_at.is_empty()
+        || manifest.created_at.len() > 40
+        || !manifest.created_at.contains('T')
+        || manifest.created_at.chars().any(char::is_control)
+    {
         return invalid("created_at 必须是日期时间字符串");
     }
     validate_dimension(manifest.canvas.width, "canvas.width")?;
@@ -332,6 +385,11 @@ fn validate_manifest(
     validate_point(manifest.anchors.drag, "anchors.drag")?;
     if manifest.generation.template_version.is_empty()
         || manifest.generation.template_version.chars().count() > 64
+        || manifest
+            .generation
+            .template_version
+            .chars()
+            .any(char::is_control)
     {
         return invalid("generation.template_version 长度必须为 1-64");
     }
@@ -440,6 +498,14 @@ fn validate_manifest(
         if !files.contains_key(required) {
             return invalid(format!("缺少必需文件：{required}"));
         }
+    }
+    if ["thumbnail.webp", "thumbnail.png"]
+        .into_iter()
+        .filter(|path| files.contains_key(*path))
+        .count()
+        != 1
+    {
+        return invalid("角色包必须包含一个根目录 thumbnail.png 或 thumbnail.webp");
     }
 
     Ok(())

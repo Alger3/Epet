@@ -1,9 +1,11 @@
 mod behavior;
+mod character_store;
 mod commands;
 mod package;
 mod state;
 mod tray;
 mod windows;
+mod workshop;
 
 use tauri::Manager;
 
@@ -18,6 +20,17 @@ pub fn run() {
         ))
         .setup(|app| {
             let app_state = state::AppState::open(app.handle())?;
+            let data_root = app.path().app_data_dir()?;
+            let cache_root = app.path().app_cache_dir()?;
+            {
+                let database = app_state.database()?;
+                character_store::cleanup_stale_storage(
+                    &database,
+                    &data_root.join("characters"),
+                    &cache_root.join("package-downloads"),
+                )?;
+                workshop::cleanup_storage(&database, &data_root.join("workshop-drafts"))?;
+            }
             let snapshot = app_state.snapshot()?;
             app.manage(app_state);
 
@@ -35,7 +48,22 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_runtime_state,
+            commands::get_workshop_snapshot,
+            commands::create_character_draft,
+            commands::save_draft_photo,
+            commands::remove_draft_photo,
+            commands::start_draft_generation,
+            commands::cancel_character_draft,
+            commands::delete_character_draft,
+            commands::rename_installed_character,
             commands::inspect_pet_package,
+            commands::list_character_library,
+            commands::get_character_definition,
+            commands::install_pet_package_from_url,
+            commands::install_local_pet_package,
+            commands::activate_character_version,
+            commands::delete_character_version,
+            commands::delete_installed_character,
             commands::set_active_character,
             commands::set_pet_visible,
             commands::set_paused,

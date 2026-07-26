@@ -11,7 +11,7 @@ ADR 记录难以逆转、跨模块或会改变范围/成本/安全边界的决�
 | [ADR-0002](ADR-0002-postgresql-job-snapshot.md) | Accepted | PostgreSQL 任务快照为事实来源 |
 | [ADR-0003](ADR-0003-device-credential-auth.md) | Accepted | 设备密钥与短期令牌鉴权 |
 | [ADR-0004](ADR-0004-overlay-window-model.md) | Accepted | 透明置顶悬浮窗口产品模型 |
-| [ADR-0005](ADR-0005-compact-overlay-implementation.md) | Proposed | 小尺寸 Overlay 与原生窗口移动实现 |
+| [ADR-0005](ADR-0005-compact-overlay-implementation.md) | Accepted | 小尺寸 Overlay 与原生窗口移动实现 |
 | [ADR-0006](ADR-0006-human-avatar-product-line.md) | Accepted | 加入 Q 版人物桌宠产品线 |
 
 ## 何时必须创建 ADR

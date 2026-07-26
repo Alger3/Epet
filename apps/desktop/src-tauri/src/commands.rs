@@ -1,11 +1,14 @@
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::behavior::{self, BehaviorEvent};
+use crate::character_store::{self, CharacterLibraryItem, RuntimeCharacterDefinition};
 use crate::package::{self, PackageSummary};
 use crate::state::{
-    AppState, MAX_PET_SCALE, MIN_PET_SCALE, RuntimeState, SLEEP_AFTER_MINUTE_OPTIONS,
+    AppState, DEFAULT_CHARACTER_ID, MAX_PET_SCALE, MIN_PET_SCALE, RuntimeState,
+    SLEEP_AFTER_MINUTE_OPTIONS,
 };
+use crate::workshop::{self, CreationDraft, SavePhotoInput, WorkshopSnapshot};
 use crate::{tray, windows};
 
 #[tauri::command]
@@ -18,6 +21,193 @@ pub fn get_runtime_state(
 }
 
 #[tauri::command]
+pub fn get_workshop_snapshot(
+    app: AppHandle,
+    window: WebviewWindow,
+) -> Result<WorkshopSnapshot, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let database = state.database().map_err(|error| error.to_string())?;
+    workshop::snapshot(&database, &data_root.join("workshop-drafts"))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn create_character_draft(
+    app: AppHandle,
+    window: WebviewWindow,
+    subject_kind: String,
+    authorization_confirmed: bool,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::create_draft(
+        &mut database,
+        &data_root.join("workshop-drafts"),
+        &subject_kind,
+        authorization_confirmed,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn save_draft_photo(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+    role: String,
+    original_name: String,
+    encoded_bytes: Vec<u8>,
+    crop_x: f64,
+    crop_y: f64,
+    crop_width: f64,
+    crop_height: f64,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let data_root = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let state = app.state::<AppState>();
+        let _operation = state
+            .workshop_operation()
+            .map_err(|error| error.to_string())?;
+        let mut database = state.database().map_err(|error| error.to_string())?;
+        workshop::save_photo(
+            &mut database,
+            &data_root.join("workshop-drafts"),
+            SavePhotoInput {
+                draft_id: &draft_id,
+                role: &role,
+                original_name: &original_name,
+                encoded_bytes: &encoded_bytes,
+                crop_x,
+                crop_y,
+                crop_width,
+                crop_height,
+            },
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("照片处理任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub fn remove_draft_photo(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+    role: String,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::remove_photo(
+        &mut database,
+        &data_root.join("workshop-drafts"),
+        &draft_id,
+        &role,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn start_draft_generation(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::start_generation(&mut database, &data_root.join("workshop-drafts"), &draft_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn cancel_character_draft(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::cancel_draft(&mut database, &data_root.join("workshop-drafts"), &draft_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn delete_character_draft(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+) -> Result<bool, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::delete_draft(&mut database, &data_root.join("workshop-drafts"), &draft_id)
+        .map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn rename_installed_character(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    character_id: String,
+    custom_name: String,
+) -> Result<(), String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let database = state.database().map_err(|error| error.to_string())?;
+    workshop::rename_character(&database, &character_id, &custom_name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn inspect_pet_package(
     window: WebviewWindow,
     path: String,
@@ -27,6 +217,243 @@ pub fn inspect_pet_package(
     let package = package::load_epet(std::path::Path::new(&path), expected_sha256.as_deref())
         .map_err(|error| error.to_string())?;
     Ok(PackageSummary::from(&package))
+}
+
+#[tauri::command]
+pub fn list_character_library(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<Vec<CharacterLibraryItem>, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let database = state.database().map_err(|error| error.to_string())?;
+    let mut characters =
+        character_store::list_characters(&database).map_err(|error| error.to_string())?;
+    for character in &mut characters {
+        if character.built_in {
+            character.local_available = true;
+            continue;
+        }
+        for version in &mut character.versions {
+            version.local_available = data_root
+                .join("characters")
+                .join(&character.id)
+                .join("versions")
+                .join(&version.package_sha256)
+                .join("package.epet")
+                .is_file();
+        }
+        character.local_available = character
+            .versions
+            .iter()
+            .any(|version| version.current && version.local_available);
+    }
+    Ok(characters)
+}
+
+#[tauri::command]
+pub fn get_character_definition(
+    app: AppHandle,
+    window: WebviewWindow,
+    character_id: String,
+) -> Result<RuntimeCharacterDefinition, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL, windows::PET_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let database = state.database().map_err(|error| error.to_string())?;
+    character_store::load_runtime_definition(
+        &database,
+        &data_root.join("characters"),
+        &character_id,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn install_pet_package_from_url(
+    app: AppHandle,
+    window: WebviewWindow,
+    url: String,
+    expected_sha256: String,
+) -> Result<CharacterLibraryItem, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    character_store::validate_expected_sha256(&expected_sha256)
+        .map_err(|error| error.to_string())?;
+    let task_app = app.clone();
+    let item = tauri::async_runtime::spawn_blocking(move || {
+        let data_root = task_app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let cache_root = task_app
+            .path()
+            .app_cache_dir()
+            .map_err(|error| error.to_string())?;
+        let state = task_app.state::<AppState>();
+        let _operation = state
+            .package_operation()
+            .map_err(|error| error.to_string())?;
+        let downloaded =
+            character_store::download_to_temporary(&cache_root.join("package-downloads"), &url)
+                .map_err(|error| error.to_string())?;
+        let mut database = state.database().map_err(|error| error.to_string())?;
+        character_store::install_package(
+            &mut database,
+            &data_root.join("characters"),
+            downloaded.path(),
+            Some(&expected_sha256),
+            None,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("角色包安装任务异常结束：{error}"))??;
+    app.emit("character-definition-changed", &item.id)
+        .map_err(|error| error.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub async fn install_local_pet_package(
+    app: AppHandle,
+    window: WebviewWindow,
+    path: String,
+    expected_sha256: Option<String>,
+) -> Result<CharacterLibraryItem, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let task_app = app.clone();
+    let item = tauri::async_runtime::spawn_blocking(move || {
+        let data_root = task_app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let state = task_app.state::<AppState>();
+        let _operation = state
+            .package_operation()
+            .map_err(|error| error.to_string())?;
+        let mut database = state.database().map_err(|error| error.to_string())?;
+        character_store::install_package(
+            &mut database,
+            &data_root.join("characters"),
+            std::path::Path::new(&path),
+            expected_sha256.as_deref(),
+            None,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("角色包安装任务异常结束：{error}"))??;
+    app.emit("character-definition-changed", &item.id)
+        .map_err(|error| error.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub fn activate_character_version(
+    app: AppHandle,
+    window: WebviewWindow,
+    character_id: String,
+    package_sha256: String,
+) -> Result<CharacterLibraryItem, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .package_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    let item = character_store::activate_version(
+        &mut database,
+        &data_root.join("characters"),
+        &character_id,
+        &package_sha256,
+    )
+    .map_err(|error| error.to_string())?;
+    app.emit("character-definition-changed", &character_id)
+        .map_err(|error| error.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub fn delete_character_version(
+    app: AppHandle,
+    window: WebviewWindow,
+    character_id: String,
+    package_sha256: String,
+) -> Result<CharacterLibraryItem, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .package_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    character_store::delete_version(
+        &mut database,
+        &data_root.join("characters"),
+        &character_id,
+        &package_sha256,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn delete_installed_character(
+    app: AppHandle,
+    window: WebviewWindow,
+    character_id: String,
+) -> Result<(), String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .package_operation()
+        .map_err(|error| error.to_string())?;
+    let active_character_id = state
+        .snapshot()
+        .map_err(|error| error.to_string())?
+        .active_character_id;
+    let active_character_id = if active_character_id == character_id {
+        if let Some(pet) = app.get_webview_window(windows::PET_LABEL) {
+            windows::set_pet_hitbox_profile(&pet, DEFAULT_CHARACTER_ID)?;
+            pet.hide().map_err(|error| error.to_string())?;
+        }
+        let snapshot = state
+            .update(|runtime| {
+                runtime.active_character_id = DEFAULT_CHARACTER_ID.to_owned();
+                runtime.visible = false;
+            })
+            .map_err(|error| error.to_string())?;
+        windows::emit_runtime_state(&app, &snapshot);
+        tray::sync_checks(&app, &snapshot);
+        snapshot.active_character_id
+    } else {
+        active_character_id
+    };
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    character_store::delete_character(
+        &mut database,
+        &data_root.join("characters"),
+        &character_id,
+        &active_character_id,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -52,7 +479,20 @@ pub fn set_active_character(
         .character_exists(&character_id)
         .map_err(|error| error.to_string())?
     {
-        return Err("角色不存在或尚未安装".to_owned());
+        return Err("角色不存在，或该安装包尚未接入桌宠渲染运行时".to_owned());
+    }
+    if character_id.starts_with("pet_") {
+        let data_root = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
+        let database = state.database().map_err(|error| error.to_string())?;
+        character_store::load_runtime_definition(
+            &database,
+            &data_root.join("characters"),
+            &character_id,
+        )
+        .map_err(|error| error.to_string())?;
     }
 
     if app.get_webview_window(windows::PET_LABEL).is_none() {
