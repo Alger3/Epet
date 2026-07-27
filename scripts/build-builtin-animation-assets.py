@@ -22,6 +22,7 @@ TARGETS = (
         ROOT / "assets" / "builtin-pet" / "cat-idle.png",
         ROOT / "assets" / "builtin-pet" / "cat-walk-sheet.png",
         ROOT / "assets" / "builtin-pet" / "cat-sleep-sheet.png",
+        ROOT / "assets" / "builtin-pet" / "cat-perch-sheet.png",
         ROOT / "assets" / "builtin-pet",
     ),
     (
@@ -29,6 +30,7 @@ TARGETS = (
         ROOT / "assets" / "builtin-character" / "human-avatar.png",
         ROOT / "assets" / "builtin-character" / "human-walk-sheet.png",
         ROOT / "assets" / "builtin-character" / "human-sleep-sheet.png",
+        ROOT / "assets" / "builtin-character" / "human-perch-sheet.png",
         ROOT / "assets" / "builtin-character",
     ),
 )
@@ -117,13 +119,14 @@ def transform(
 
 
 def curated_frames(
-    source_path: Path, walk_path: Path, sleep_path: Path
+    source_path: Path, walk_path: Path, sleep_path: Path, perch_path: Path
 ) -> list[tuple[str, Image.Image]]:
     with Image.open(source_path) as source:
         idle = normalize(source)
     walk = sheet_frames(walk_path)
     sleep_cells = sheet_frames(sleep_path)
     sleep = sleep_cells[0]
+    perch = sheet_frames(perch_path)
     frames: list[tuple[str, Image.Image]] = []
     for action_name, spec in ACTIONS.items():
         for index in range(spec.frames):
@@ -133,6 +136,8 @@ def curated_frames(
                 frame = walk[index % len(walk)]
             elif action_name == "sleep":
                 frame = transform(sleep, scale_y=1 + wave * 0.012, offset_y=round(wave))
+            elif action_name == "perch":
+                frame = perch[index % len(perch)]
             elif action_name == "tap":
                 amount = sin(phase * pi)
                 frame = transform(
@@ -181,9 +186,9 @@ def pack_atlas(frames: list[tuple[str, Image.Image]]) -> tuple[bytes, dict]:
 
 
 def main() -> None:
-    for subject_kind, source, walk, sleep, destination in TARGETS:
+    for subject_kind, source, walk, sleep, perch, destination in TARGETS:
         rendered = render_animation(source.read_bytes(), subject_kind)
-        atlas_png, atlas_frames = pack_atlas(curated_frames(source, walk, sleep))
+        atlas_png, atlas_frames = pack_atlas(curated_frames(source, walk, sleep, perch))
         rendered["atlas"]["frames"] = atlas_frames
         (destination / "animation-atlas.png").write_bytes(atlas_png)
         (destination / "animation.json").write_text(

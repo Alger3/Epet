@@ -82,7 +82,7 @@ export function PetOverlay() {
 
   return (
     <main
-      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""} ${sleepStir && state.lastBehaviorState === "sleep" ? "pet-sleep-stir" : ""}`}
+      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.edgeDock ? `pet-edge-${state.edgeDock}` : ""} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""} ${sleepStir && state.lastBehaviorState === "sleep" ? "pet-sleep-stir" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         void actions.restoreFocus();
@@ -137,6 +137,7 @@ export function PetOverlay() {
           definition={character.animation}
           fallbackUrl={character.assetUrl}
           facing={facing}
+          edgeDock={state.edgeDock}
           paused={state.paused}
           movementDistance={movementDistance}
         />

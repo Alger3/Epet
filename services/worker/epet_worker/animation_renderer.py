@@ -32,6 +32,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "tap": ActionSpec(6, 75, False, next_action="idle"),
     "drag": ActionSpec(6, 100, True),
     "wake": ActionSpec(8, 90, False, next_action="idle"),
+    "perch": ActionSpec(8, 160, True),
 }
 
 
@@ -69,6 +70,17 @@ def _line(draw: ImageDraw.ImageDraw, points, fill, width: int) -> None:
 def _cat_frame(
     action: str, phase: float, palette: tuple[tuple[int, int, int], ...]
 ) -> Image.Image:
+    if action == "perch":
+        base = _cat_frame("idle", phase, palette)
+        frame = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+        head = base.crop((55, 24, 190, 142))
+        frame.alpha_composite(head, (60, 82))
+        draw = ImageDraw.Draw(frame)
+        _, dark, light, _ = palette
+        for paw in ((72, 190, 116, 224), (150, 190, 194, 224)):
+            draw.ellipse(paw, fill=light + (255,), outline=dark + (255,), width=3)
+        return frame
+
     primary, dark, light, accent = palette
     scale = SUPERSAMPLING
     frame = Image.new("RGBA", (CANVAS * scale, CANVAS * scale), (0, 0, 0, 0))
@@ -177,6 +189,17 @@ def _cat_frame(
 def _human_frame(
     action: str, phase: float, palette: tuple[tuple[int, int, int], ...]
 ) -> Image.Image:
+    if action == "perch":
+        base = _human_frame("idle", phase, palette)
+        frame = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+        head = base.crop((68, 18, 188, 132))
+        frame.alpha_composite(head, (68, 72))
+        draw = ImageDraw.Draw(frame)
+        _, dark, light, _ = palette
+        for hand in ((73, 184, 112, 218), (154, 184, 193, 218)):
+            draw.ellipse(hand, fill=light + (255,), outline=dark + (255,), width=3)
+        return frame
+
     primary, dark, light, accent = palette
     scale = SUPERSAMPLING
     frame = Image.new("RGBA", (CANVAS * scale, CANVAS * scale), (0, 0, 0, 0))
@@ -319,6 +342,9 @@ def render_animation(photo: bytes, subject_kind: str) -> dict:
         elif action_name == "sleep":
             channels += ["pose.sleep", "eyes.visibility", "torso.scale"]
             events = ["eyes_close"]
+        elif action_name == "perch":
+            channels += ["pose.perch", "eyes.visibility", "hands.position"]
+            events = ["edge_dock"]
         clips[action_name] = {
             "frame_count": spec.frames,
             "duration_ms": spec.frames * spec.duration_ms,

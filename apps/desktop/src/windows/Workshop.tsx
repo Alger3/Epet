@@ -11,7 +11,7 @@ type WorkshopPage = "home" | "library" | "create" | "settings" | "privacy";
 
 const PAGE_COPY: Record<WorkshopPage, { title: string; description: string }> = {
   home: {
-    title: "桌面角色工坊",
+    title: "角色工坊",
     description: "选择陪伴角色，查看当前桌宠并控制显示状态。",
   },
   library: {

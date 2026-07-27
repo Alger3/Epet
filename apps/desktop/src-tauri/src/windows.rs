@@ -16,6 +16,7 @@ pub const WORKSHOP_LABEL: &str = "workshop";
 pub const PET_LABEL: &str = "pet-overlay";
 const PET_BASE_SIZE: f64 = 320.0;
 const SAFE_MARGIN_LOGICAL: f64 = 24.0;
+const EDGE_DOCK_THRESHOLD_LOGICAL: f64 = 32.0;
 const AUTONOMOUS_MOVE_TICK: Duration = Duration::from_millis(100);
 const AUTONOMOUS_MOVE_PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 const AUTONOMOUS_MOVE_SPEED_LOGICAL: f64 = 48.0;
@@ -89,13 +90,16 @@ pub fn restore_pet_window(app: &AppHandle, window: &WebviewWindow) -> Result<Run
     let default_y = bottom - size.height as i32 - margin;
     let (requested_x, requested_y) =
         position_from_saved_anchor(&snapshot, &monitor, size).unwrap_or((default_x, default_y));
-    let (x, y) = clamp_position(
+    let (mut x, mut y) = clamp_position(
         requested_x,
         requested_y,
         size.width,
         size.height,
         (left, top, right, bottom),
     );
+    if let Some(edge) = snapshot.edge_dock.as_deref() {
+        (x, y) = snap_to_edge(x, y, size, (left, top, right, bottom), edge);
+    }
 
     window
         .set_position(PhysicalPosition::new(x, y))
@@ -135,6 +139,10 @@ pub fn reset_pet_position(app: &AppHandle) -> Result<RuntimeState, String> {
             runtime.dpi_scale = None;
             runtime.foot_anchor_x = None;
             runtime.foot_anchor_y = None;
+            runtime.edge_dock = None;
+            if runtime.last_behavior_state == "perch" {
+                runtime.last_behavior_state = "idle".to_owned();
+            }
         })
         .map_err(|error| error.to_string())?;
     let window = pet_window(app)?;
@@ -469,7 +477,20 @@ fn persist_pet_geometry(
     let scale = state.snapshot().map_err(|error| error.to_string())?.scale;
     let monitor = window_monitor_snapshot(window, position, size)?;
     let bounds = monitor.bounds;
-    let (x, y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
+    let dragged_to_edge = settle_drag
+        .then(|| {
+            nearest_edge_dock(
+                position,
+                size,
+                bounds,
+                (EDGE_DOCK_THRESHOLD_LOGICAL * monitor.dpi_scale).round() as i32,
+            )
+        })
+        .flatten();
+    let (mut x, mut y) = clamp_position(position.x, position.y, size.width, size.height, bounds);
+    if let Some(edge) = dragged_to_edge {
+        (x, y) = snap_to_edge(x, y, size, bounds, edge);
+    }
     if (x, y) != (position.x, position.y) {
         set_pet_physical_position(window, PhysicalPosition::new(x, y))?;
     }
@@ -485,10 +506,18 @@ fn persist_pet_geometry(
     let snapshot = state
         .update(|runtime| {
             apply_geometry(runtime, &geometry);
-            if settle_drag && runtime.last_behavior_state == "drag" {
-                runtime.last_behavior_state =
-                    behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
-                        .to_owned();
+            if settle_drag {
+                if let Some(edge) = dragged_to_edge
+                    && matches!(runtime.last_behavior_state.as_str(), "drag" | "sleep")
+                {
+                    runtime.edge_dock = Some(edge.to_owned());
+                    runtime.last_behavior_state = "perch".to_owned();
+                } else if runtime.last_behavior_state == "drag" {
+                    runtime.edge_dock = None;
+                    runtime.last_behavior_state =
+                        behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
+                            .to_owned();
+                }
             }
         })
         .map_err(|error| error.to_string())?;
@@ -577,6 +606,45 @@ fn set_pet_physical_position(
 
 fn should_defer_position_settle(settle_drag: bool, primary_button_down: bool) -> bool {
     settle_drag && primary_button_down
+}
+
+fn nearest_edge_dock(
+    position: PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    bounds: (i32, i32, i32, i32),
+    threshold: i32,
+) -> Option<&'static str> {
+    let (left, top, right, bottom) = bounds;
+    let window_right = position.x.saturating_add(size.width as i32);
+    let window_bottom = position.y.saturating_add(size.height as i32);
+    let candidates = [
+        ("left", (position.x - left).max(0)),
+        ("right", (right - window_right).max(0)),
+        ("top", (position.y - top).max(0)),
+        ("bottom", (bottom - window_bottom).max(0)),
+    ];
+    candidates
+        .into_iter()
+        .filter(|(_, distance)| *distance <= threshold)
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(edge, _)| edge)
+}
+
+fn snap_to_edge(
+    x: i32,
+    y: i32,
+    size: tauri::PhysicalSize<u32>,
+    bounds: (i32, i32, i32, i32),
+    edge: &str,
+) -> (i32, i32) {
+    let (left, top, right, bottom) = bounds;
+    match edge {
+        "left" => (left, y),
+        "right" => (right - size.width as i32, y),
+        "top" => (x, top),
+        "bottom" => (x, bottom - size.height as i32),
+        _ => (x, y),
+    }
 }
 
 #[cfg(windows)]
@@ -1270,11 +1338,12 @@ fn install_native_hit_test(
 mod tests {
     use super::{
         HitboxRegion, advance_horizontal, autonomous_movement_step, can_autonomous_move,
-        clamp_position, hitboxes_contain, movement_direction, should_defer_position_settle,
-        should_enter_sleep,
+        clamp_position, hitboxes_contain, movement_direction, nearest_edge_dock,
+        should_defer_position_settle, should_enter_sleep, snap_to_edge,
     };
     use crate::state::RuntimeState;
     use std::time::Duration;
+    use tauri::{PhysicalPosition, PhysicalSize};
 
     #[test]
     fn clamps_window_inside_negative_origin_monitor() {
@@ -1297,6 +1366,30 @@ mod tests {
         assert!(should_defer_position_settle(true, true));
         assert!(!should_defer_position_settle(true, false));
         assert!(!should_defer_position_settle(false, true));
+    }
+
+    #[test]
+    fn edge_dock_detects_and_snaps_on_negative_origin_monitor() {
+        let size = PhysicalSize::new(320, 320);
+        let bounds = (-1920, 0, 0, 1080);
+        assert_eq!(
+            nearest_edge_dock(PhysicalPosition::new(-305, 400), size, bounds, 32),
+            Some("right")
+        );
+        assert_eq!(snap_to_edge(-1600, 400, size, bounds, "right"), (-320, 400));
+    }
+
+    #[test]
+    fn edge_dock_ignores_positions_outside_the_threshold() {
+        assert_eq!(
+            nearest_edge_dock(
+                PhysicalPosition::new(500, 300),
+                PhysicalSize::new(320, 320),
+                (0, 0, 1920, 1080),
+                32,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -1355,7 +1448,7 @@ mod tests {
         state.paused = true;
         assert!(!can_autonomous_move(&state));
         state.paused = false;
-        for behavior in ["tap", "drag", "drop", "sleep", "wake"] {
+        for behavior in ["tap", "drag", "drop", "sleep", "wake", "perch"] {
             state.last_behavior_state = behavior.to_owned();
             assert!(
                 !can_autonomous_move(&state),

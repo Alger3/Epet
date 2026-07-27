@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { BehaviorState } from "../shared/runtime-state";
+import type { BehaviorState, EdgeDock } from "../shared/runtime-state";
 import {
   distanceFrameIndex,
   frameDuration,
@@ -15,6 +15,7 @@ interface SpriteAtlasProps {
   definition?: SpriteAtlasDefinition;
   fallbackUrl: string;
   facing?: "left" | "right";
+  edgeDock?: EdgeDock | null;
   paused: boolean;
   movementDistance?: number;
 }
@@ -25,6 +26,7 @@ export function SpriteAtlas({
   definition,
   fallbackUrl,
   facing = "left",
+  edgeDock = null,
   paused,
   movementDistance = 0,
 }: SpriteAtlasProps) {
@@ -83,6 +85,20 @@ export function SpriteAtlas({
     action?.phaseSource === "distance"
       ? distanceFrameIndex(movementDistance, action)
       : frameIndex;
+  const spriteTransform =
+    behavior === "perch" &&
+    edgeDock &&
+    !failed &&
+    Boolean(definition?.actions.perch)
+      ? {
+          bottom: undefined,
+          top: "rotate(180deg)",
+          left: "rotate(90deg)",
+          right: "rotate(-90deg)",
+        }[edgeDock]
+      : facing === "right"
+        ? "scaleX(-1)"
+        : undefined;
 
   useEffect(() => {
     if (!definition || !action || failed) return;
@@ -122,7 +138,7 @@ export function SpriteAtlas({
           className="pet-atlas-canvas"
           height={definition.canvas.height}
           role="img"
-          style={{ transform: facing === "right" ? "scaleX(-1)" : undefined }}
+          style={{ transform: spriteTransform }}
           width={definition.canvas.width}
         />
       ) : (
@@ -131,7 +147,7 @@ export function SpriteAtlas({
           className="pet-static-fallback"
           draggable={false}
           src={fallbackUrl}
-          style={{ transform: facing === "right" ? "scaleX(-1)" : undefined }}
+          style={{ transform: spriteTransform }}
         />
       )}
     </>

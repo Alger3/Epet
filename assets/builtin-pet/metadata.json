@@ -11,5 +11,17 @@
   "width": 1254,
   "height": 1254,
   "sha256": "69d4d4b78490a4432f13c6aa41ff680980d76b11822469c09672b89a46f3c8e7",
+  "animation_assets": [
+    {
+      "action": "perch",
+      "file": "cat-perch-sheet.png",
+      "layout": "4x2",
+      "frames": 8,
+      "generated_at": "2026-07-27",
+      "sha256": "f0b8b73568894631393838dae23099a0611ff73cab89c74658310141b5f2ebed",
+      "prompt_summary": "Referenced orange tabby peeking over an implied screen edge with head and two front paws, subtle breathing and blinking, green chroma-key background",
+      "postprocess": "remove_chroma_key.py with #00ff00 key, tolerance 90 and spill cleanup"
+    }
+  ],
   "distribution": "Bundled offline test pet; no third-party source image was used. Repository-wide licensing must be selected before public distribution."
 }

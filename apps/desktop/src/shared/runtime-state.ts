@@ -12,7 +12,10 @@ export type BehaviorState =
   | "tap"
   | "drag"
   | "drop"
-  | "wake";
+  | "wake"
+  | "perch";
+
+export type EdgeDock = "left" | "right" | "top" | "bottom";
 
 export interface RuntimeState {
   activeCharacterId: string;
@@ -31,6 +34,7 @@ export interface RuntimeState {
   alwaysOnTop: boolean;
   autonomousMovement: boolean;
   sleepAfterMinutes: number;
+  edgeDock: EdgeDock | null;
   paused: boolean;
   lastBehaviorState: BehaviorState;
   diagnostic: string | null;
@@ -54,10 +58,11 @@ export const DEFAULT_RUNTIME_STATE: RuntimeState = {
   alwaysOnTop: true,
   autonomousMovement: false,
   sleepAfterMinutes: 10,
+  edgeDock: null,
   paused: false,
   lastBehaviorState: "idle",
   diagnostic: null,
-  runtimeVersion: 8,
+  runtimeVersion: 9,
 };
 
 export function clampScale(scale: number): number {

@@ -433,6 +433,16 @@ html[data-window="pet-overlay"] #root {
   animation: pet-drop 220ms ease-out both;
 }
 
+.pet-behavior-perch .pet-float {
+  transform-origin: 50% 50%;
+  animation: pet-perch 2.6s ease-in-out infinite;
+}
+
+@keyframes pet-perch {
+  0%, 100% { transform: translateY(0) rotate(-0.35deg); }
+  50% { transform: translateY(2px) rotate(0.35deg); }
+}
+
 .pet-paused .pet-float {
   animation-play-state: paused;
 }

@@ -646,6 +646,7 @@ pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeSt
     ensure_caller(&window, &[windows::PET_LABEL])?;
     let state = app.state::<AppState>();
     let current = state.snapshot().map_err(|error| error.to_string())?;
+    let previous_edge_dock = current.edge_dock.clone();
     state
         .clear_wake_clicks()
         .map_err(|error| error.to_string())?;
@@ -660,6 +661,7 @@ pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeSt
     }
     let dragging = state
         .update(|runtime| {
+            runtime.edge_dock = None;
             runtime.last_behavior_state =
                 behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragStart)
                     .to_owned();
@@ -672,11 +674,15 @@ pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeSt
     if let Err(error) = drag_result {
         let restored = state
             .update(|runtime| {
-                let dropped =
-                    behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
-                        .to_owned();
-                runtime.last_behavior_state =
-                    behavior::transition(&dropped, BehaviorEvent::AnimationFinished).to_owned();
+                runtime.edge_dock = previous_edge_dock.clone();
+                runtime.last_behavior_state = if runtime.edge_dock.is_some() {
+                    "perch".to_owned()
+                } else {
+                    let dropped =
+                        behavior::transition(&runtime.last_behavior_state, BehaviorEvent::DragEnd)
+                            .to_owned();
+                    behavior::transition(&dropped, BehaviorEvent::AnimationFinished).to_owned()
+                };
             })
             .map_err(|state_error| state_error.to_string())?;
         windows::emit_runtime_state(&app, &restored);

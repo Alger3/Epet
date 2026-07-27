@@ -12,6 +12,7 @@ pub enum BehaviorEvent {
 
 pub fn transition(current: &str, event: BehaviorEvent) -> &'static str {
     match event {
+        BehaviorEvent::Tap if current == "perch" => "perch",
         BehaviorEvent::Tap if current != "sleep" => "tap",
         BehaviorEvent::DragStart if current != "sleep" => "drag",
         BehaviorEvent::DragEnd if current == "drag" => "drop",
@@ -33,6 +34,7 @@ pub fn normalize(current: &str) -> &'static str {
         "drag" => "drag",
         "drop" => "drop",
         "wake" => "wake",
+        "perch" => "perch",
         _ => "idle",
     }
 }
@@ -58,11 +60,12 @@ mod tests {
             assert_eq!(transition("tap", BehaviorEvent::AnimationFinished), "idle");
         }
         assert_eq!(transition("sleep", BehaviorEvent::Tap), "sleep");
+        assert_eq!(transition("perch", BehaviorEvent::Tap), "perch");
     }
 
     #[test]
     fn drag_and_drop_have_explicit_recovery() {
-        for state in ["idle", "walk", "tap", "drop", "wake"] {
+        for state in ["idle", "walk", "tap", "drop", "wake", "perch"] {
             assert_eq!(transition(state, BehaviorEvent::DragStart), "drag");
         }
         assert_eq!(transition("sleep", BehaviorEvent::DragStart), "sleep");
@@ -74,5 +77,6 @@ mod tests {
     fn invalid_persisted_states_are_normalized() {
         assert_eq!(normalize("paused"), "idle");
         assert_eq!(normalize("unknown"), "idle");
+        assert_eq!(normalize("perch"), "perch");
     }
 }

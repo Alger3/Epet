@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use thiserror::Error;
 
-pub const RUNTIME_SCHEMA_VERSION: i64 = 8;
+pub const RUNTIME_SCHEMA_VERSION: i64 = 9;
 pub const DEFAULT_PET_SCALE: f64 = 0.8;
 pub const MIN_PET_SCALE: f64 = 0.5;
 pub const MAX_PET_SCALE: f64 = 1.5;
@@ -36,6 +36,7 @@ pub struct RuntimeState {
     pub always_on_top: bool,
     pub autonomous_movement: bool,
     pub sleep_after_minutes: u32,
+    pub edge_dock: Option<String>,
     pub paused: bool,
     pub last_behavior_state: String,
     pub diagnostic: Option<String>,
@@ -61,6 +62,7 @@ impl Default for RuntimeState {
             always_on_top: true,
             autonomous_movement: false,
             sleep_after_minutes: DEFAULT_SLEEP_AFTER_MINUTES,
+            edge_dock: None,
             paused: false,
             last_behavior_state: "idle".to_owned(),
             diagnostic: None,
@@ -149,7 +151,7 @@ impl AppState {
                         work_area_height, dpi_scale, pet_logical_size,
                         foot_anchor_x, foot_anchor_y, scale, visible,
                         click_through, paused, last_behavior_state, runtime_version,
-                        always_on_top, autonomous_movement, sleep_after_minutes
+                        always_on_top, autonomous_movement, sleep_after_minutes, edge_dock
                  FROM runtime_state WHERE singleton = 1",
                 [],
                 |row| {
@@ -174,6 +176,7 @@ impl AppState {
                         always_on_top: row.get::<_, i64>(16)? != 0,
                         autonomous_movement: row.get::<_, i64>(17)? != 0,
                         sleep_after_minutes: row.get::<_, i64>(18)? as u32,
+                        edge_dock: row.get(19)?,
                     })
                 },
             )
@@ -319,6 +322,9 @@ fn apply_migrations(connection: &Connection) -> Result<(), rusqlite::Error> {
     if version < 8 {
         connection.execute_batch(include_str!("../migrations/0008-workshop-drafts.sql"))?;
     }
+    if version < 9 {
+        connection.execute_batch(include_str!("../migrations/0009-edge-dock.sql"))?;
+    }
     Ok(())
 }
 
@@ -329,13 +335,13 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            work_area_height, dpi_scale, pet_logical_size, foot_anchor_x,
            foot_anchor_y, scale, visible, click_through, paused,
            last_behavior_state, runtime_version, always_on_top, autonomous_movement,
-           sleep_after_minutes
+           sleep_after_minutes, edge_dock
          ) VALUES (
            1, :active_character_id, :active_character_id, :monitor_id, :x, :y, :work_area_width,
            :work_area_height, :dpi_scale, :pet_logical_size, :foot_anchor_x,
            :foot_anchor_y, :scale, :visible, :click_through, :paused,
            :last_behavior_state, :runtime_version, :always_on_top, :autonomous_movement,
-           :sleep_after_minutes
+           :sleep_after_minutes, :edge_dock
          )
          ON CONFLICT(singleton) DO UPDATE SET
            active_pet_id = excluded.active_character_id,
@@ -357,7 +363,8 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
            runtime_version = excluded.runtime_version,
            always_on_top = excluded.always_on_top,
            autonomous_movement = excluded.autonomous_movement,
-           sleep_after_minutes = excluded.sleep_after_minutes",
+           sleep_after_minutes = excluded.sleep_after_minutes,
+           edge_dock = excluded.edge_dock",
         named_params! {
             ":active_character_id": state.active_character_id,
             ":monitor_id": state.monitor_id,
@@ -378,6 +385,7 @@ fn persist_runtime(connection: &Connection, state: &RuntimeState) -> Result<(), 
             ":always_on_top": i64::from(state.always_on_top),
             ":autonomous_movement": i64::from(state.autonomous_movement),
             ":sleep_after_minutes": i64::from(state.sleep_after_minutes),
+            ":edge_dock": state.edge_dock,
         },
     )?;
     Ok(())
@@ -416,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_database_migrates_and_persists_sleep_configuration() {
+    fn fresh_database_migrates_and_persists_runtime_configuration() {
         let connection = Connection::open_in_memory().expect("open in-memory database");
         apply_migrations(&connection).expect("apply migrations");
         let version: i64 = connection
@@ -426,6 +434,7 @@ mod tests {
 
         let state = RuntimeState {
             sleep_after_minutes: 20,
+            edge_dock: Some("left".to_owned()),
             ..RuntimeState::default()
         };
         persist_runtime(&connection, &state).expect("persist runtime");
@@ -437,5 +446,13 @@ mod tests {
             )
             .expect("read sleep timeout");
         assert_eq!(stored, 20);
+        let edge_dock: String = connection
+            .query_row(
+                "SELECT edge_dock FROM runtime_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read edge dock");
+        assert_eq!(edge_dock, "left");
     }
 }
