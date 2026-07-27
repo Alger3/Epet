@@ -1,10 +1,12 @@
 # Epet
 
-Epet 是一款面向 Windows 的 2D 桌面角色应用。用户使用一张必选主照片和最多两张可选补充照片，生成猫咪或获授权成年人的 Q 版形象；两类主体分别进入专属 AI 流水线，云端统一产出受限的 Sprite Atlas 角色包，桌面端负责安全下载、校验、运行和交互。
+Epet 是一款面向 Windows 的 2D 桌面角色应用。目标是让用户使用一张必选主照片和最多两张可选补充照片，生成猫咪或获授权成年人的 Q 版桌宠；两类主体分别进入专属生成流水线，最终统一产出受限的 Sprite Atlas `.epet` 角色包，由桌面端安全下载、校验、安装、运行和交互。
 
-当前仓库处于 **阶段 2：桌面壳实现与验证**，并已完成一条可交付的 0.2.0 双角色离线 Alpha：内置橘猫与原创 Q 版成年人、角色库切换、透明 Overlay、托盘、单实例、SQLite v3 持久化、多屏恢复和 NSIS 构建配置已经进入代码。
+当前仓库处于 **阶段 5：生成服务与动画资产基础**。阶段 2–4 已完成桌面壳、Sprite Atlas 运行时、`.epet` 安全安装、角色库、本地草稿、照片清理和桌面生成状态 UI；阶段 5 已实现本地 FastAPI、PostgreSQL、Redis、MinIO、CPU/Mock Worker，以及桌面上传、SSE/轮询、产物下载、SHA-256 校验、自动安装和激活闭环。
 
-照片转 Q 版角色、云端 API/Worker、人物 Gate B-H 和 Windows Gate A 实机证据仍未完成。0.2.0 不读取或上传照片，也不会把占位结果描述为 AI 生成成功。
+当前 Worker 仍是确定性管线 Mock：它会把清理后的照片打成可安装 `.epet`，但不会把照片真正重绘为 Q 版，而且各动作仍复用单帧。下一步先完成“部件拆分 + 模板骨骼 + 程序化动作 + 多帧 Atlas”，随后再接入 OpenVINO/CUDA 真实模型 Provider。项目不会把 Mock 产物描述为 AI 生成成功。
+
+详细进度见 [PLAN.md](PLAN.md)，下一步动画设计见 [部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)。
 
 ## 冻结的 MVP 边界
 
@@ -12,9 +14,10 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。用户使用一张必�
 - MVP 支持猫咪与 Q 版人物两类主体；人物仅限本人或获明确授权的成年人，狗及其他动物不在首版。
 - 两类主体各冻结一种画风、独立创建接口/AI 流水线/质量 Gate；桌面同时只激活一个角色。
 - 输入为一张主照片和最多两张补充照片。
-- 客户端只运行 Sprite Atlas；生成质量不足时降级为模板轻动画。
+- 客户端只运行 Sprite Atlas；骨骼、部件形变和生成模型只存在于 Worker 制作阶段。
+- 本地 Worker 按 CUDA、OpenVINO GPU、OpenVINO CPU 选择生成 Provider；同一任务契约后续可以部署到云端。
 - PostgreSQL 任务快照是状态事实来源；Redis 与 SSE 只负责通知。
-- 匿名安装 ID 不是身份凭证，访问必须使用设备密钥与短期令牌。
+- 匿名安装 ID 不是身份凭证；公开或云端服务访问必须使用设备密钥与短期令牌。当前无鉴权 API 仅限回环地址本地开发。
 
 变更上述边界必须新建 ADR，并重新评估范围、成本与排期。
 
@@ -23,8 +26,8 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。用户使用一张必�
 | 路径 | 职责 |
 |---|---|
 | `apps/desktop/` | Tauri 2、React/TypeScript、桌宠窗口与本地数据 |
-| `services/api/` | FastAPI、设备鉴权、上传和生成 API |
-| `services/worker/` | AI、后处理、质量检查与打包 Worker |
+| `services/api/` | FastAPI、本地上传/任务/SSE/删除 API；设备鉴权仍是公开部署前任务 |
+| `services/worker/` | CPU/Mock Worker、后续模型 Provider、动画渲染、质量检查与打包 |
 | `packages/contracts/` | OpenAPI、JSON Schema、错误码和黄金样例 |
 | `packages/pet-runtime/` | Sprite Atlas 加载、渲染与行为状态机 |
 | `packages/ui/` | 工坊可复用 UI |
@@ -42,8 +45,11 @@ React 工坊 ─┐
 PixiJS 桌宠 ├─ Tauri/Rust ─ SQLite + 本地角色资源
             └────────────── FastAPI ─ PostgreSQL
                                       ├─ Redis 队列/通知
-                                      ├─ 对象存储
-                                      └─ GPU Worker
+                                      ├─ MinIO 对象存储
+                                      └─ Worker
+                                          ├─ 当前：CPU/Mock
+                                          ├─ 下一步：骨骼动画与 Atlas
+                                          └─ 后续：OpenVINO / CUDA
 ```
 
 关键边界：
@@ -52,6 +58,7 @@ PixiJS 桌宠 ├─ Tauri/Rust ─ SQLite + 本地角色资源
 2. API Route 只做协议适配，业务规则在 Service，外部系统访问在 Repository/Adapter。
 3. Worker 消息只携带任务 ID、步骤和期望版本，真实输入从 PostgreSQL 读取。
 4. `.epet` 包只允许 JSON、PNG、WebP，安装前必须完成哈希、Schema、路径和资源上限校验。
+5. 骨骼、部件层和生成模型不进入桌面运行时；Worker 将动作离线烘焙成多帧 Atlas。
 
 详见 [系统架构](docs/architecture/system-overview.md) 与 [安全边界](docs/architecture/security-boundaries.md)。
 
@@ -72,31 +79,59 @@ apps\desktop\src-tauri\target\release\bundle\nsis\
 
 也可以手动触发仓库的 `Windows installer` GitHub Actions 工作流并下载 Artifact。完整环境、使用方法、已知限制和实机清单见 [Windows 双角色离线 Alpha](docs/release/windows-offline-alpha.md)。
 
-## 开发状态与启动
+## 本地生成开发
 
-当前可运行的是桌面端切片；API、Worker 与 Mock API 仍是后续阶段工作。推荐 Node.js、Rust 和 Python 版本分别记录在 `.node-version`、`rust-toolchain.toml` 与 `.python-version`。
+推荐 Node.js、Rust 和 Python 版本分别记录在 `.node-version`、`rust-toolchain.toml` 与 `.python-version`。首次准备：
 
-```bash
+```powershell
 npm install
-npm run dev:web
-npm run test
-npm run test:e2e
-npm run build:desktop
+npm run setup:python
+npm run dev:infra
 ```
 
-`dev:web` 在浏览器中预览角色工坊和 Overlay；Windows 上使用 `npm run dev:desktop` 启动完整 Tauri 桌面壳。根命令状态如下：
+等待 `docker compose -f infra/docker/compose.yaml ps` 显示 PostgreSQL、Redis、MinIO 均为 `healthy`。随后打开三个 PowerShell 终端：
+
+```powershell
+npm run dev:api
+```
+
+```powershell
+npm run dev:worker
+```
+
+```powershell
+npm run dev:desktop
+```
+
+FastAPI 文档位于 `http://127.0.0.1:8000/docs`，MinIO 本地控制台位于 `http://127.0.0.1:9001`。默认账号和端口只用于回环地址开发，不得直接暴露到公网。完整说明见 [本地照片生成开发](docs/local-generation-development.md)。
+
+`dev:web` 可以在浏览器中预览 React/PixiJS，但不包含 Tauri Command、原生窗口、照片本地持久化和自动安装能力。根命令状态如下：
 
 | 命令 | 状态 | 说明 |
 |---|---|---|
+| `npm run setup:python` | 可用 | 安装 FastAPI、PostgreSQL、Redis、MinIO、Pillow 等 Python 依赖 |
+| `npm run dev:infra` | 可用 | 启动本地 PostgreSQL、Redis 和 MinIO |
+| `npm run stop:infra` | 可用 | 停止基础设施容器但保留 named volumes |
+| `npm run dev:api` | 可用 | 启动本地 FastAPI、上传/SSE/任务/删除和产物下载接口 |
+| `npm run dev:worker` | 可用 | 启动确定性 CPU/Mock Worker；当前不执行真实 Q 版重绘 |
 | `npm run dev:desktop` | 可用 | 启动 Tauri 主窗口、桌宠窗口和托盘 |
 | `npm run dev:web` | 可用 | 仅浏览器预览 React/PixiJS，不含原生窗口能力 |
 | `npm run test` | 可用 | 角色目录、运行状态和壳配置快速测试 |
 | `npm run test:e2e` | 可用 | 窗口、权限、迁移、切换命令和素材哈希契约测试；Windows 交互 E2E 待补 |
 | `npm run lint` | 可用但依赖平台工具链 | TypeScript 与 Rust 格式/Clippy |
 | `npm run build:desktop` | Windows 可用 | 构建 Windows NSIS；发布签名尚未配置 |
-| `dev:api` / `dev:worker` | 未实现 | 属于后续生成服务阶段，不提供占位成功脚本 |
+| `npm run inspect:epet -- <path> [sha256]` | 可用 | 使用桌面 Rust 加载器检查生成包 |
 
-Ubuntu 仅用于前端和交叉静态检查；完整 Tauri 本机构建需要 WebKitGTK/D-Bus 等系统开发包。Windows 11 x64 的 DPI、多屏、焦点、托盘退出和八小时稳定性结果必须按 [阶段 2 测试计划](docs/testing/phase-2-desktop-shell-test-plan.md) 留证后，才能宣称 Gate A 通过。
+常用验证（`local_e2e.py` 需要先启动基础设施、API 和 Worker）：
+
+```powershell
+npm run test
+npm run lint
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+python services/api/tests/local_e2e.py
+```
+
+Windows 11 基础 Gate A 已完成；新增窗口模型、移动同步或渲染路径后，仍需按 [阶段 2 测试计划](docs/testing/phase-2-desktop-shell-test-plan.md) 重跑适用的 DPI、多屏、焦点、托盘退出和长稳项目。
 
 ## 协作
 
