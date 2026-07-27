@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.epet.invalid/v2/rig.schema.json",
+  "title": "Epet character rig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "template_id", "template_version", "subject_kind", "bones", "anchors"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "template_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+    "template_version": { "$ref": "#/$defs/semver" },
+    "subject_kind": { "enum": ["pet_cat", "human_avatar"] },
+    "bones": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/bone" }
+    },
+    "anchors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foot", "drag", "center", "head"],
+      "properties": {
+        "foot": { "$ref": "#/$defs/point" },
+        "drag": { "$ref": "#/$defs/point" },
+        "center": { "$ref": "#/$defs/point" },
+        "head": { "$ref": "#/$defs/point" }
+      }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "bone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "parent", "origin", "length", "angle", "angle_limit"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "parent": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+        "origin": { "$ref": "#/$defs/point" },
+        "length": { "type": "number", "minimum": 0, "maximum": 1 },
+        "angle": { "type": "number", "minimum": -360, "maximum": 360 },
+        "angle_limit": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -360, "maximum": 360 },
+            { "type": "number", "minimum": -360, "maximum": 360 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    }
+  }
+}

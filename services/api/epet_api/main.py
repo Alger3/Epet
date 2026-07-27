@@ -238,8 +238,8 @@ def create_generation(
             """
             INSERT INTO generation_jobs (
               id, display_name, primary_upload_id, additional_upload_ids,
-              style_id, species, stage, progress
-            ) VALUES (%s, %s, %s, %s, %s, %s, 'created', 0)
+              style_id, species, subject_kind, stage, progress
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'created', 0)
             RETURNING *
             """,
             (
@@ -249,6 +249,7 @@ def create_generation(
                 json.dumps(body.additional_upload_ids),
                 body.style_id,
                 body.species,
+                body.resolved_subject_kind(),
             ),
         ).fetchone()
         conn.commit()

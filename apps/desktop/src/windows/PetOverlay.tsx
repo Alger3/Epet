@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { shouldReleasePressedState } from "../shared/runtime-state";
 import { useCharacter } from "../shared/use-character";
@@ -12,6 +13,7 @@ export function PetOverlay() {
   const [state, actions] = useRuntimeState();
   const [pressed, setPressed] = useState(false);
   const [sleepStir, setSleepStir] = useState(false);
+  const [movementDistance, setMovementDistance] = useState(0);
   const { character } = useCharacter(state.activeCharacterId);
 
   const finishPress = (resetMovement = true) => {
@@ -34,6 +36,24 @@ export function PetOverlay() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<number>("pet-movement-distance", (event) => {
+      if (!disposed && Number.isFinite(event.payload) && event.payload > 0) {
+        setMovementDistance((distance) => distance + event.payload);
+      }
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   const stirSleepingPet = () => {
     if (stirTimerRef.current !== null) clearTimeout(stirTimerRef.current);
@@ -106,6 +126,7 @@ export function PetOverlay() {
           definition={character.animation}
           fallbackUrl={character.assetUrl}
           paused={state.paused}
+          movementDistance={movementDistance}
         />
       </div>
     </main>

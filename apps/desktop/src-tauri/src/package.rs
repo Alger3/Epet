@@ -39,6 +39,8 @@ pub struct PetManifest {
     pub pet_id: String,
     pub name: String,
     pub species: String,
+    #[serde(default)]
+    pub subject_kind: Option<String>,
     pub renderer: String,
     pub created_at: String,
     pub canvas: CanvasSize,
@@ -47,6 +49,8 @@ pub struct PetManifest {
     pub anchors: Anchors,
     pub hitboxes: Vec<ManifestHitbox>,
     pub actions: HashMap<String, ManifestAction>,
+    #[serde(default)]
+    pub animation: Option<ManifestAnimation>,
     pub generation: Generation,
     pub files: Vec<ManifestFile>,
 }
@@ -92,6 +96,19 @@ pub struct ManifestAction {
     pub r#loop: bool,
     pub next_action: Option<String>,
     pub fallback: Option<String>,
+    #[serde(default)]
+    pub phase_source: Option<String>,
+    #[serde(default)]
+    pub stride_length: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestAnimation {
+    pub layers: String,
+    pub rig: String,
+    pub clips: String,
+    pub render_profile: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -336,8 +353,8 @@ fn validate_manifest(
     manifest: &PetManifest,
     files: &HashMap<String, Vec<u8>>,
 ) -> Result<(), PackageError> {
-    if manifest.schema_version != 1 {
-        return invalid("只支持 manifest schema_version 1");
+    if !matches!(manifest.schema_version, 1 | 2) {
+        return invalid("只支持 manifest schema_version 1 或 2");
     }
     let package_version = parse_version(&manifest.package_version, "package_version")?;
     let min_runtime = parse_version(&manifest.min_runtime_version, "min_runtime_version")?;
@@ -363,8 +380,18 @@ fn validate_manifest(
     {
         return invalid("name 长度必须为 1-64 个字符");
     }
-    if manifest.species != "cat" || manifest.renderer != "sprite_atlas" {
-        return invalid("v1 仅支持 cat + sprite_atlas");
+    if manifest.renderer != "sprite_atlas" {
+        return invalid("只支持 sprite_atlas renderer");
+    }
+    match manifest.schema_version {
+        1 if manifest.species != "cat" || manifest.subject_kind.is_some() => {
+            return invalid("v1 仅支持不含 subject_kind 的 cat");
+        }
+        2 => match (manifest.species.as_str(), manifest.subject_kind.as_deref()) {
+            ("cat", Some("pet_cat")) | ("human", Some("human_avatar")) => {}
+            _ => return invalid("v2 species 与 subject_kind 不一致"),
+        },
+        _ => {}
     }
     if manifest.created_at.is_empty()
         || manifest.created_at.len() > 40
@@ -444,6 +471,26 @@ fn validate_manifest(
                 "非循环动作 {name} 必须定义 next_action 或 fallback"
             ));
         }
+        match action.phase_source.as_deref() {
+            None | Some("time") => {
+                if action.stride_length.is_some() {
+                    return invalid(format!(
+                        "动作 {name} 只有 distance 相位可以定义 stride_length"
+                    ));
+                }
+            }
+            Some("distance") => {
+                if !action
+                    .stride_length
+                    .is_some_and(|stride| stride.is_finite() && (1.0..=4096.0).contains(&stride))
+                {
+                    return invalid(format!(
+                        "动作 {name} 的 distance 相位必须定义有效 stride_length"
+                    ));
+                }
+            }
+            Some(other) => return invalid(format!("动作 {name} 的 phase_source 无效：{other}")),
+        }
         for target in [action.next_action.as_ref(), action.fallback.as_ref()]
             .into_iter()
             .flatten()
@@ -507,7 +554,119 @@ fn validate_manifest(
     {
         return invalid("角色包必须包含一个根目录 thumbnail.png 或 thumbnail.webp");
     }
+    validate_animation_metadata(manifest, files)?;
 
+    Ok(())
+}
+
+fn validate_animation_metadata(
+    manifest: &PetManifest,
+    files: &HashMap<String, Vec<u8>>,
+) -> Result<(), PackageError> {
+    let Some(animation) = &manifest.animation else {
+        return if manifest.schema_version == 1 {
+            Ok(())
+        } else {
+            invalid("v2 manifest 必须包含 animation 元数据")
+        };
+    };
+    if manifest.schema_version != 2 {
+        return invalid("v1 manifest 不允许包含 animation 元数据");
+    }
+    let paths = [
+        animation.layers.as_str(),
+        animation.rig.as_str(),
+        animation.clips.as_str(),
+        animation.render_profile.as_str(),
+    ];
+    let mut unique_paths = HashSet::new();
+    for path in paths {
+        validate_package_path(path)?;
+        if !unique_paths.insert(path.to_ascii_lowercase()) {
+            return invalid("animation 元数据路径必须互不相同");
+        }
+        if !files.contains_key(path) {
+            return invalid(format!("缺少 animation 元数据文件：{path}"));
+        }
+    }
+
+    let subject_kind = manifest.subject_kind.as_deref().unwrap_or_default();
+    let layers: serde_json::Value = serde_json::from_slice(&files[&animation.layers])?;
+    if layers["schema_version"] != 1
+        || layers["subject_kind"] != subject_kind
+        || layers["parts"]
+            .as_array()
+            .is_none_or(|parts| parts.len() < 4)
+    {
+        return invalid("LayerBundle 版本、主体或部件无效");
+    }
+    let mut part_ids = HashSet::new();
+    for part in layers["parts"].as_array().unwrap() {
+        let id = part["id"].as_str().unwrap_or_default();
+        let bone = part["bone"].as_str().unwrap_or_default();
+        if !valid_action_name(id)
+            || !valid_action_name(bone)
+            || !part_ids.insert(id.to_ascii_lowercase())
+        {
+            return invalid("LayerBundle 包含无效或重复部件");
+        }
+    }
+
+    let rig: serde_json::Value = serde_json::from_slice(&files[&animation.rig])?;
+    let bones = rig["bones"]
+        .as_array()
+        .ok_or_else(|| PackageError::Invalid("Rig 缺少 bones".to_owned()))?;
+    if rig["schema_version"] != 1 || rig["subject_kind"] != subject_kind || bones.len() < 4 {
+        return invalid("Rig 版本、主体或骨骼数量无效");
+    }
+    let mut bone_ids = HashSet::new();
+    for bone in bones {
+        let id = bone["id"].as_str().unwrap_or_default();
+        if !valid_action_name(id) || !bone_ids.insert(id.to_ascii_lowercase()) {
+            return invalid("Rig 包含无效或重复骨骼");
+        }
+    }
+    for bone in bones {
+        if let Some(parent) = bone["parent"].as_str()
+            && !bone_ids.contains(&parent.to_ascii_lowercase())
+        {
+            return invalid(format!("Rig 骨骼引用不存在的父骨骼：{parent}"));
+        }
+    }
+    for part in layers["parts"].as_array().unwrap() {
+        let bone = part["bone"].as_str().unwrap_or_default();
+        if !bone_ids.contains(&bone.to_ascii_lowercase()) {
+            return invalid(format!("部件引用不存在的骨骼：{bone}"));
+        }
+    }
+
+    let clips: serde_json::Value = serde_json::from_slice(&files[&animation.clips])?;
+    let clip_map = clips["clips"]
+        .as_object()
+        .ok_or_else(|| PackageError::Invalid("AnimationClips 缺少 clips".to_owned()))?;
+    if clips["schema_version"] != 1 || clip_map.len() != manifest.actions.len() {
+        return invalid("AnimationClips 版本或动作数量无效");
+    }
+    for (name, action) in &manifest.actions {
+        let clip = clip_map
+            .get(name)
+            .ok_or_else(|| PackageError::Invalid(format!("AnimationClips 缺少动作：{name}")))?;
+        if clip["frame_count"].as_u64() != Some(action.frames.len() as u64)
+            || clip["phase_source"].as_str()
+                != Some(action.phase_source.as_deref().unwrap_or("time"))
+        {
+            return invalid(format!("AnimationClips 动作与 manifest 不一致：{name}"));
+        }
+    }
+
+    let profile: serde_json::Value = serde_json::from_slice(&files[&animation.render_profile])?;
+    if profile["schema_version"] != 1
+        || profile["canvas"]["width"] != manifest.canvas.width
+        || profile["canvas"]["height"] != manifest.canvas.height
+        || profile["pixel_format"] != "rgba8_srgb"
+    {
+        return invalid("RenderProfile 与 manifest 画布或像素格式不一致");
+    }
     Ok(())
 }
 

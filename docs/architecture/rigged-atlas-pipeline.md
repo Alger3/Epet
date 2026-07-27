@@ -1,5 +1,7 @@
 # 部件拆分、骨骼动画与 Atlas 流水线
 
+> 实现状态：5.4 基线已于 2026-07-27 完成。当前 Mock 使用程序化 LayerBundle 验证猫咪与人物 Rig、六动作 Clip、确定性 Atlas 和桌面距离相位；真实照片到标准立绘/部件 Mask 的 Provider 属于步骤 5.5。
+
 > 状态：Planned
 > 首次实施位置：阶段 5.4
 > 运行时边界：客户端继续只加载 `.epet` Sprite Atlas v1

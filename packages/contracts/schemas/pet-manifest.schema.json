@@ -23,12 +23,13 @@
     "files"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "enum": [1, 2] },
     "package_version": { "$ref": "#/$defs/semver" },
     "min_runtime_version": { "$ref": "#/$defs/semver" },
     "pet_id": { "type": "string", "pattern": "^pet_[A-Za-z0-9_-]{8,64}$" },
     "name": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "species": { "const": "cat" },
+    "species": { "enum": ["cat", "human"] },
+    "subject_kind": { "enum": ["pet_cat", "human_avatar"] },
     "renderer": { "const": "sprite_atlas" },
     "created_at": { "type": "string", "format": "date-time" },
     "canvas": { "$ref": "#/$defs/size" },
@@ -65,6 +66,17 @@
       "required": ["idle"],
       "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },
       "additionalProperties": { "$ref": "#/$defs/action" }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layers", "rig", "clips", "render_profile"],
+      "properties": {
+        "layers": { "$ref": "#/$defs/safePath" },
+        "rig": { "$ref": "#/$defs/safePath" },
+        "clips": { "$ref": "#/$defs/safePath" },
+        "render_profile": { "$ref": "#/$defs/safePath" }
+      }
     },
     "generation": {
       "type": "object",
@@ -144,7 +156,9 @@
         },
         "loop": { "type": "boolean" },
         "next_action": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]{0,31}$" },
-        "fallback": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+        "fallback": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+        "phase_source": { "enum": ["time", "distance"] },
+        "stride_length": { "type": "number", "exclusiveMinimum": 0, "maximum": 4096 }
       }
     },
     "file": {
@@ -162,5 +176,16 @@
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "schema_version": { "const": 2 } },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "required": ["subject_kind", "animation"]
+      }
+    }
+  ]
 }

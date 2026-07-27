@@ -3,7 +3,7 @@
 > 文档版本：v0.4
 > 首次编写：2026-07-23
 > 最近更新：2026-07-27
-> 当前状态：Active（0.2.0 双角色离线 Alpha；Gate A 已验收；阶段 3、阶段 4 已完成；阶段 5 已具备本地 FastAPI、PostgreSQL、Redis、MinIO、确定性 Mock Worker，以及桌面上传、SSE/轮询、下载、校验、安装和激活闭环；下一步为阶段 5.4 多帧骨骼动画基线，真实 Q 版模型、立绘确认和人物生成 Gate 仍待验证）
+> 当前状态：Active（0.2.0 双角色离线 Alpha；Gate A 已验收；阶段 3、阶段 4 与步骤 5.4 已完成；本地 FastAPI、PostgreSQL、Redis、MinIO、确定性多帧骨骼 Mock Worker，以及桌面上传、SSE/轮询、下载、v1/v2 校验、安装和激活闭环已打通；下一步为步骤 5.5 本地多硬件生成 Provider，真实 Q 版模型、立绘确认和人物生成 Gate 仍待验证）
 > 正式支持：Windows 11 x64
 > 尽力兼容：Windows 10 22H2 x64 / ESU（不承诺跟随微软提供系统级安全支持）
 > 推荐技术路线：Tauri 2 + React/TypeScript + PixiJS + Python/FastAPI + 本地多硬件 Worker（可选云端 GPU）
@@ -1192,6 +1192,8 @@ interactive / click_through
 #### 步骤 5.4：部件拆分、骨骼动画与 Atlas 基线
 
 > 详细设计：[部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)
+>
+> 状态：Completed（2026-07-27）。已交付 `.epet` v2 动画元数据、猫咪/人物标准 Rig 与 LayerBundle、确定性离线 Atlas 渲染、六动作多帧产物、距离相位播放、v1 静态包兼容、黄金哈希和本地双主体黑盒闭环。这里的 Mock 只从照片提取稳定配色并驱动原创程序化部件，不代表真实照片已经完成 Q 版重绘；该能力进入步骤 5.5。
 
 要做什么：
 

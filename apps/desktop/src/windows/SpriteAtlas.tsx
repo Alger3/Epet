@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { BehaviorState } from "../shared/runtime-state";
 import {
+  distanceFrameIndex,
   frameDuration,
   nextFrameIndex,
   resolveSpriteAction,
@@ -14,6 +15,7 @@ interface SpriteAtlasProps {
   definition?: SpriteAtlasDefinition;
   fallbackUrl: string;
   paused: boolean;
+  movementDistance?: number;
 }
 
 export function SpriteAtlas({
@@ -22,6 +24,7 @@ export function SpriteAtlas({
   definition,
   fallbackUrl,
   paused,
+  movementDistance = 0,
 }: SpriteAtlasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -62,16 +65,27 @@ export function SpriteAtlas({
   }, [definition]);
 
   useEffect(() => {
-    if (!action || paused || action.frames.length <= 1) return;
+    if (
+      !action ||
+      paused ||
+      action.phaseSource === "distance" ||
+      action.frames.length <= 1
+    ) return;
     const timeout = window.setTimeout(() => {
       setFrameIndex((current) => nextFrameIndex(current, action));
     }, frameDuration(action, frameIndex));
     return () => window.clearTimeout(timeout);
   }, [action, frameIndex, paused]);
 
+  const renderedFrameIndex =
+    action?.phaseSource === "distance"
+      ? distanceFrameIndex(movementDistance, action)
+      : frameIndex;
+
   useEffect(() => {
     if (!definition || !action || failed) return;
-    const frameName = action.frames[Math.min(frameIndex, action.frames.length - 1)];
+    const frameName =
+      action.frames[Math.min(renderedFrameIndex, action.frames.length - 1)];
     const frame = definition.frames[frameName];
     const image = imageRef.current;
     const canvas = canvasRef.current;
@@ -95,16 +109,10 @@ export function SpriteAtlas({
       frame.spriteSource.w * scaleX,
       frame.spriteSource.h * scaleY,
     );
-  }, [action, definition, failed, frameIndex, imageRevision]);
+  }, [action, definition, failed, renderedFrameIndex, imageRevision]);
 
   return (
     <>
-      <img
-        alt={definition && !failed ? "" : alt}
-        className="pet-static-fallback"
-        draggable={false}
-        src={fallbackUrl}
-      />
       {definition && !failed ? (
         <canvas
           ref={canvasRef}
@@ -114,7 +122,14 @@ export function SpriteAtlas({
           role="img"
           width={definition.canvas.width}
         />
-      ) : null}
+      ) : (
+        <img
+          alt={alt}
+          className="pet-static-fallback"
+          draggable={false}
+          src={fallbackUrl}
+        />
+      )}
     </>
   );
 }

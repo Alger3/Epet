@@ -117,6 +117,8 @@ pub struct RuntimeAction {
     pub frame_duration_ms: Vec<u64>,
     pub r#loop: bool,
     pub fallback: Option<String>,
+    pub phase_source: String,
+    pub stride_length: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -647,6 +649,11 @@ fn runtime_definition_from_package(
                         .fallback
                         .clone()
                         .or_else(|| action.next_action.clone()),
+                    phase_source: action
+                        .phase_source
+                        .clone()
+                        .unwrap_or_else(|| "time".to_owned()),
+                    stride_length: action.stride_length,
                 },
             )
         })
@@ -664,11 +671,20 @@ fn runtime_definition_from_package(
         })
         .collect();
 
+    let subject_kind = package
+        .manifest
+        .subject_kind
+        .as_deref()
+        .unwrap_or("pet_cat");
     Ok(RuntimeCharacterDefinition {
         id: package.manifest.pet_id.clone(),
         name: package.manifest.name.clone(),
-        subject_kind: "pet_cat".to_owned(),
-        subject_label: "猫咪".to_owned(),
+        subject_kind: subject_kind.to_owned(),
+        subject_label: if subject_kind == "human_avatar" {
+            "Q 版人物".to_owned()
+        } else {
+            "猫咪".to_owned()
+        },
         description: format!(
             "已安装角色包 v{}，动作由经过校验的 Sprite Atlas 提供。",
             package.manifest.package_version
@@ -772,15 +788,21 @@ fn index_installed_package(
         "INSERT INTO characters (
            id, name, subject_kind, asset_key, built_in, created_at,
            current_package_sha256, updated_at
-         ) VALUES (?1, ?2, 'pet_cat', ?3, 0, ?4, ?5, datetime('now'))
+         ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, datetime('now'))
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
+           subject_kind = excluded.subject_kind,
            current_package_sha256 = excluded.current_package_sha256,
            updated_at = excluded.updated_at
          WHERE characters.built_in = 0",
         params![
             package.manifest.pet_id,
             package.manifest.name,
+            package
+                .manifest
+                .subject_kind
+                .as_deref()
+                .unwrap_or("pet_cat"),
             format!("package:{}", package.manifest.pet_id),
             package.manifest.created_at,
             package.package_sha256,

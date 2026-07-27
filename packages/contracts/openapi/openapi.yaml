@@ -629,7 +629,10 @@ components:
           maxLength: 64
         species:
           type: string
-          const: cat
+          enum: [cat, human]
+        subject_kind:
+          type: string
+          enum: [pet_cat, human_avatar]
         display_name:
           type: string
           minLength: 1

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.epet.invalid/v2/animation-clips.schema.json",
+  "title": "Epet offline animation clips",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "clips"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "clips": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "required": ["idle"],
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+      "additionalProperties": { "$ref": "#/$defs/clip" }
+    }
+  },
+  "$defs": {
+    "clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_count", "duration_ms", "loop", "phase_source", "channels", "events"],
+      "properties": {
+        "frame_count": { "type": "integer", "minimum": 1, "maximum": 240 },
+        "duration_ms": { "type": "integer", "minimum": 16, "maximum": 60000 },
+        "loop": { "type": "boolean" },
+        "phase_source": { "enum": ["time", "distance"] },
+        "stride_length": { "type": "number", "exclusiveMinimum": 0, "maximum": 4096 },
+        "channels": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.]{0,63}$" }
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+        }
+      }
+    }
+  }
+}

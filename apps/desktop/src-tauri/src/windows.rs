@@ -299,6 +299,10 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             if window.set_position(PhysicalPosition::new(x, y)).is_err() {
                 continue;
             }
+            let moved = ((x - position.x).abs() + (y - position.y).abs()) as f64;
+            if moved > 0.0 {
+                let _ = app.emit("pet-movement-distance", moved);
+            }
 
             if last_persist.elapsed() >= AUTONOMOUS_MOVE_PERSIST_INTERVAL {
                 let _ = persist_pet_geometry(&app, &window, false);

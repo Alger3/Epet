@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  distanceFrameIndex,
   frameDuration,
   nextFrameIndex,
   resolveSpriteAction,
@@ -42,5 +43,19 @@ describe("sprite atlas actions", () => {
   it("uses a safe duration for malformed runtime data", () => {
     expect(frameDuration(definition.actions.idle, 0)).toBe(80);
     expect(frameDuration(definition.actions.idle, 99)).toBe(100);
+  });
+
+  it("selects walk frames from accumulated distance without foot sliding", () => {
+    const walk = {
+      frames: ["walk_000", "walk_001", "walk_002", "walk_003"],
+      frameDurationMs: [90, 90, 90, 90],
+      loop: true,
+      phaseSource: "distance" as const,
+      strideLength: 40,
+    };
+    expect(distanceFrameIndex(0, walk)).toBe(0);
+    expect(distanceFrameIndex(10, walk)).toBe(1);
+    expect(distanceFrameIndex(39, walk)).toBe(3);
+    expect(distanceFrameIndex(40, walk)).toBe(0);
   });
 });

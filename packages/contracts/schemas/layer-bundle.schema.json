@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.epet.invalid/v2/layer-bundle.schema.json",
+  "title": "Epet normalized character layer bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "subject_kind", "canvas", "parts"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "subject_kind": { "enum": ["pet_cat", "human_avatar"] },
+    "canvas": { "$ref": "#/$defs/size" },
+    "parts": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/part" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 4096 }
+      }
+    },
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "bone", "pivot", "z_index", "source"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "bone": { "$ref": "#/$defs/id" },
+        "pivot": { "$ref": "#/$defs/point" },
+        "z_index": { "type": "integer", "minimum": -128, "maximum": 128 },
+        "source": { "enum": ["visible", "inferred", "procedural_mock"] }
+      }
+    }
+  }
+}

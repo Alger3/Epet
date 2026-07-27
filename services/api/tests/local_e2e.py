@@ -52,16 +52,18 @@ def wait_ready(job_id: str) -> dict:
     raise TimeoutError(f"generation timed out: {job_id}")
 
 
-def generate(upload_id: str) -> tuple[str, bytes, str]:
+def generate(upload_id: str, subject_kind: str = "pet_cat") -> tuple[str, bytes, str]:
+    human = subject_kind == "human_avatar"
     snapshot = json_call(
         "/v1/generations",
         "POST",
         {
             "primary_upload_id": upload_id,
             "additional_upload_ids": [],
-            "style_id": "cat-local-mock",
-            "species": "cat",
-            "display_name": "本地闭环测试猫",
+            "style_id": "chibi-local-mock" if human else "cat-local-mock",
+            "species": "human" if human else "cat",
+            "subject_kind": subject_kind,
+            "display_name": "本地闭环测试人物" if human else "本地闭环测试猫",
         },
     )
     job_id = snapshot["job_id"]
@@ -105,14 +107,29 @@ def main() -> None:
 
     first_job, first, package_hash = generate(upload_id)
     second_job, second, second_hash = generate(upload_id)
+    human_job, human, human_hash = generate(upload_id, "human_avatar")
     assert first == second
     assert package_hash == second_hash
     target.write_bytes(first)
+    human_target = target.with_name(f"{target.stem}-human{target.suffix}")
+    human_target.write_bytes(human)
 
     assert json_call(f"/v1/generations/{first_job}", "DELETE")["status"] == "completed"
     assert json_call(f"/v1/generations/{second_job}", "DELETE")["status"] == "completed"
+    assert json_call(f"/v1/generations/{human_job}", "DELETE")["status"] == "completed"
     assert json_call(f"/v1/uploads/{upload_id}", "DELETE")["status"] == "deleted"
-    print(json.dumps({"package": str(target), "sha256": package_hash, "bytes": len(first)}))
+    print(
+        json.dumps(
+            {
+                "package": str(target),
+                "sha256": package_hash,
+                "bytes": len(first),
+                "human_package": str(human_target),
+                "human_sha256": human_hash,
+                "human_bytes": len(human),
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

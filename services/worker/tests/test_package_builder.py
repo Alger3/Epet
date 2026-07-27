@@ -18,10 +18,17 @@ def test_package_is_deterministic_and_self_describing() -> None:
     first = build_epet(source_png(), "测试猫咪")
     second = build_epet(source_png(), "测试猫咪")
     assert sha256(first).digest() == sha256(second).digest()
+    assert sha256(first).hexdigest() == (
+        "768e7323b6d981c3878552e58c372a343278b3f0a068f0122190cf5a0df9eaaa"
+    )
 
     with ZipFile(BytesIO(first)) as archive:
         assert archive.namelist() == [
             "manifest.json",
+            "animation/clips.json",
+            "animation/layers.json",
+            "animation/render-profile.json",
+            "animation/rig.json",
             "atlas/pet.json",
             "atlas/pet.png",
             "license.json",
@@ -30,6 +37,54 @@ def test_package_is_deterministic_and_self_describing() -> None:
         manifest = json.loads(archive.read("manifest.json"))
         assert manifest["name"] == "测试猫咪"
         assert manifest["pet_id"].startswith("pet_")
+        assert manifest["schema_version"] == 2
+        assert manifest["subject_kind"] == "pet_cat"
+        assert set(manifest["actions"]) == {
+            "idle",
+            "walk",
+            "sleep",
+            "tap",
+            "drag",
+            "wake",
+        }
+        assert all(
+            len(action["frames"]) > 1 for action in manifest["actions"].values()
+        )
+        assert manifest["actions"]["walk"]["phase_source"] == "distance"
+        assert manifest["actions"]["walk"]["stride_length"] == 48
+        atlas = json.loads(archive.read("atlas/pet.json"))
+        assert sha256(archive.read("atlas/pet.png")).hexdigest() == (
+            "c79a791027fad3cd37e9d072fd790dafbaf91298bde91185f94760aca2a3163d"
+        )
+        assert len(atlas["frames"]) == sum(
+            len(action["frames"]) for action in manifest["actions"].values()
+        )
+        with Image.open(BytesIO(archive.read("atlas/pet.png"))) as atlas_image:
+            assert atlas_image.size[0] <= 4096
+            assert atlas_image.size[1] <= 4096
+            for action in manifest["actions"].values():
+                rendered = []
+                for frame_name in action["frames"]:
+                    rect = atlas["frames"][frame_name]["frame"]
+                    rendered.append(
+                        sha256(
+                            atlas_image.crop(
+                                (
+                                    rect["x"],
+                                    rect["y"],
+                                    rect["x"] + rect["w"],
+                                    rect["y"] + rect["h"],
+                                )
+                            ).tobytes()
+                        ).digest()
+                    )
+                assert len(set(rendered)) > 1
+        clips = json.loads(archive.read("animation/clips.json"))
+        rig = json.loads(archive.read("animation/rig.json"))
+        layers = json.loads(archive.read("animation/layers.json"))
+        assert clips["clips"]["sleep"]["events"] == ["eyes_close"]
+        assert any(bone["id"] == "tail_04" for bone in rig["bones"])
+        assert any(part["id"] == "eyes_closed" for part in layers["parts"])
         for declared in manifest["files"]:
             content = archive.read(declared["path"])
             assert declared["size"] == len(content)
@@ -38,3 +93,22 @@ def test_package_is_deterministic_and_self_describing() -> None:
     with ZipFile(BytesIO(build_epet(source_png(), "另一只猫"))) as archive:
         renamed = json.loads(archive.read("manifest.json"))
     assert renamed["pet_id"] != manifest["pet_id"]
+
+
+def test_human_template_has_limbs_secondary_motion_and_distinct_identity() -> None:
+    package = build_epet(source_png(), "测试人物", "human_avatar")
+    assert sha256(package).hexdigest() == (
+        "63bcf4b88546a9333ad5191497baec048f6543225eb44a34d6f1a4fc21fe171f"
+    )
+    with ZipFile(BytesIO(package)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        rig = json.loads(archive.read("animation/rig.json"))
+        clips = json.loads(archive.read("animation/clips.json"))
+        assert sha256(archive.read("atlas/pet.png")).hexdigest() == (
+            "3c2c3dbf4655bba4ac425a4e3f50f882c325c8bdc2379f7f9f96d9e2e62626ee"
+        )
+    assert manifest["species"] == "human"
+    assert manifest["subject_kind"] == "human_avatar"
+    assert any(bone["id"] == "forearm_l" for bone in rig["bones"])
+    assert any(bone["id"] == "hair_back" for bone in rig["bones"])
+    assert "secondary_motion.rotation" in clips["clips"]["walk"]["channels"]

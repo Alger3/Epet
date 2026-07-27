@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
   additional_upload_ids JSONB NOT NULL DEFAULT '[]',
   style_id TEXT NOT NULL,
   species TEXT NOT NULL,
+  subject_kind TEXT NOT NULL DEFAULT 'pet_cat',
   stage TEXT NOT NULL,
   progress DOUBLE PRECISION,
   retryable BOOLEAN NOT NULL DEFAULT FALSE,
@@ -40,6 +41,9 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE generation_jobs
+  ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'pet_cat';
 
 CREATE TABLE IF NOT EXISTS deletions (
   id TEXT PRIMARY KEY,

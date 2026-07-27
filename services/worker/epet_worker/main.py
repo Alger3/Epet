@@ -56,7 +56,8 @@ def process(job_id: str) -> None:
         source.close()
         source.release_conn()
     update(job_id, "generating_portrait", 0.35)
-    package = build_epet(photo, job["display_name"])
+    subject_kind = job["subject_kind"]
+    package = build_epet(photo, job["display_name"], subject_kind)
     update(job_id, "generating_actions", 0.6)
     artifact_key = f"artifacts/{job_id}/character.epet"
     object_store().put_object(

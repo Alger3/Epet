@@ -25,8 +25,16 @@ describe("built-in character catalog", () => {
     expect(isSubjectKind("dog")).toBe(false);
   });
 
-  it("provides wake animation metadata for the built-in pet", () => {
-    expect(BUILTIN_CHARACTERS[0].animation?.actions.wake).toBeDefined();
-    expect(BUILTIN_CHARACTERS[0].animation?.actions.wake.loop).toBe(false);
+  it("provides the complete multi-frame baseline for both built-in characters", () => {
+    for (const character of BUILTIN_CHARACTERS) {
+      const animation = character.animation;
+      expect(animation).toBeDefined();
+      expect(Object.keys(animation?.frames ?? {})).toHaveLength(52);
+      for (const actionName of ["idle", "walk", "sleep", "tap", "drag", "wake"]) {
+        expect(animation?.actions[actionName].frames.length).toBeGreaterThan(1);
+      }
+      expect(animation?.actions.walk.phaseSource).toBe("distance");
+      expect(animation?.actions.wake.loop).toBe(false);
+    }
   });
 });

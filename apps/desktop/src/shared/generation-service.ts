@@ -220,7 +220,8 @@ export async function generateInstallAndActivate(
           .filter((photo) => photo.role !== "primary")
           .map((photo) => uploadIds[photo.role]),
         style_id: draft.subjectKind === "human_avatar" ? "chibi-local-mock" : "cat-local-mock",
-        species: "cat",
+        species: draft.subjectKind === "human_avatar" ? "human" : "cat",
+        subject_kind: draft.subjectKind,
         display_name: draft.displayName ?? "自定义桌宠",
       }),
     });

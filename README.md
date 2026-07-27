@@ -4,9 +4,9 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。目标是让用户使�
 
 当前仓库处于 **阶段 5：生成服务与动画资产基础**。阶段 2–4 已完成桌面壳、Sprite Atlas 运行时、`.epet` 安全安装、角色库、本地草稿、照片清理和桌面生成状态 UI；阶段 5 已实现本地 FastAPI、PostgreSQL、Redis、MinIO、CPU/Mock Worker，以及桌面上传、SSE/轮询、产物下载、SHA-256 校验、自动安装和激活闭环。
 
-当前 Worker 仍是确定性管线 Mock：它会把清理后的照片打成可安装 `.epet`，但不会把照片真正重绘为 Q 版，而且各动作仍复用单帧。下一步先完成“部件拆分 + 模板骨骼 + 程序化动作 + 多帧 Atlas”，随后再接入 OpenVINO/CUDA 真实模型 Provider。项目不会把 Mock 产物描述为 AI 生成成功。
+步骤 5.4 的动画基线已经完成。当前确定性 Mock Worker 会从清理后的照片提取稳定配色，使用猫咪或人物标准部件与骨骼生成 `idle`、`walk`、`sleep`、`tap`、`drag`、`wake` 多帧动作，并离线烘焙为 `.epet` v2 Atlas；走路帧按桌面实际移动距离推进，睡眠包含卧姿、闭眼和呼吸。它仍不会把照片真正重绘为对应身份的 Q 版角色，下一步是接入 OpenVINO/CUDA/CPU 真实模型 Provider。项目不会把程序化 Mock 产物描述为 AI 生成成功。
 
-详细进度见 [PLAN.md](PLAN.md)，下一步动画设计见 [部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)。
+详细进度见 [PLAN.md](PLAN.md)，已实现的动画契约见 [部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)。
 
 ## 冻结的 MVP 边界
 
@@ -47,9 +47,9 @@ PixiJS 桌宠 ├─ Tauri/Rust ─ SQLite + 本地角色资源
                                       ├─ Redis 队列/通知
                                       ├─ MinIO 对象存储
                                       └─ Worker
-                                          ├─ 当前：CPU/Mock
-                                          ├─ 下一步：骨骼动画与 Atlas
-                                          └─ 后续：OpenVINO / CUDA
+                                          ├─ 当前：部件/骨骼 Mock → 多帧 Atlas
+                                          ├─ 下一步：OpenVINO / CUDA / CPU Provider
+                                          └─ 后续：真实立绘与身份质量 Gate
 ```
 
 关键边界：
@@ -113,7 +113,7 @@ FastAPI 文档位于 `http://127.0.0.1:8000/docs`，MinIO 本地控制台位于 
 | `npm run dev:infra` | 可用 | 启动本地 PostgreSQL、Redis 和 MinIO |
 | `npm run stop:infra` | 可用 | 停止基础设施容器但保留 named volumes |
 | `npm run dev:api` | 可用 | 启动本地 FastAPI、上传/SSE/任务/删除和产物下载接口 |
-| `npm run dev:worker` | 可用 | 启动确定性 CPU/Mock Worker；当前不执行真实 Q 版重绘 |
+| `npm run dev:worker` | 可用 | 启动确定性多帧骨骼 Mock Worker；生成动画 Atlas，但当前不执行真实 Q 版重绘 |
 | `npm run dev:desktop` | 可用 | 启动 Tauri 主窗口、桌宠窗口和托盘 |
 | `npm run dev:web` | 可用 | 仅浏览器预览 React/PixiJS，不含原生窗口能力 |
 | `npm run test` | 可用 | 角色目录、运行状态和壳配置快速测试 |
