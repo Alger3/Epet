@@ -7,6 +7,7 @@
 | [security-boundaries.md](security-boundaries.md) | 信任区、权限、鉴权、文件和发布密钥 |
 | [data-models.md](data-models.md) | 本地/服务端实体、状态机与迁移规则 |
 | [tauri-command-registry.md](tauri-command-registry.md) | Command 与窗口 capability 审批清单 |
+| [rigged-atlas-pipeline.md](rigged-atlas-pipeline.md) | 部件拆分、模板骨骼、程序化动作、离线渲染与 Atlas 验收 |
 | [decisions/](decisions/) | 不可逆或跨模块选择的 ADR |
 
 架构文档解释边界和原因，不复制 OpenAPI 字段或数据库当前列。实现结构变化先更新设计；不可逆选择通过 ADR。
