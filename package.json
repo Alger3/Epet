@@ -10,6 +10,12 @@
     "npm": "11.12.1"
   },
   "scripts": {
+    "dev:infra": "docker compose -f infra/docker/compose.yaml up -d",
+    "stop:infra": "docker compose -f infra/docker/compose.yaml down",
+    "dev:api": "python -m uvicorn epet_api.main:app --app-dir services/api --host 127.0.0.1 --port 8000 --reload",
+    "dev:worker": "python services/worker/run_worker.py",
+    "inspect:epet": "cargo run --quiet --manifest-path apps/desktop/src-tauri/Cargo.toml --example inspect_epet --",
+    "setup:python": "python -m pip install -r services/worker/requirements.txt",
     "dev:desktop": "npm --workspace @epet/desktop run tauri dev",
     "dev:web": "npm --workspace @epet/desktop run dev",
     "test": "npm --workspace @epet/desktop run test",

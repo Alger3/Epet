@@ -11,7 +11,7 @@ use image::{
     codecs::{jpeg::JpegEncoder, png::PngEncoder},
 };
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -81,6 +81,17 @@ pub struct DraftPhoto {
     pub preview_data_url: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationDraftUpdate {
+    pub status: String,
+    pub progress_percent: Option<u8>,
+    pub server_job_id: Option<String>,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub retryable: bool,
+}
+
 pub struct SavePhotoInput<'a> {
     pub draft_id: &'a str,
     pub role: &'a str,
@@ -121,7 +132,7 @@ pub fn snapshot(
         .collect::<Result<Vec<_>, _>>()?;
     Ok(WorkshopSnapshot {
         drafts,
-        generation_service_configured: false,
+        generation_service_configured: true,
     })
 }
 
@@ -394,15 +405,70 @@ pub fn start_generation(
     }
     connection.execute(
         "UPDATE creation_drafts
-         SET status = 'service_unavailable',
+         SET status = 'submitting',
              snapshot_version = snapshot_version + 1,
-             progress_percent = NULL,
-             error_code = 'generation_service_not_configured',
-             error_message = '生成服务将在阶段 5 接入；草稿和清理后照片已经安全保存在本地。',
-             retryable = 1,
+             progress_percent = 0,
+             server_job_id = NULL,
+             error_code = NULL,
+             error_message = NULL,
+             retryable = 0,
              updated_at = datetime('now')
          WHERE id = ?1",
         [draft_id],
+    )?;
+    get_draft(connection, drafts_root, draft_id)
+}
+
+pub fn update_generation(
+    connection: &mut Connection,
+    drafts_root: &Path,
+    draft_id: &str,
+    update: GenerationDraftUpdate,
+) -> Result<CreationDraft, WorkshopError> {
+    validate_draft_id(draft_id)?;
+    if !matches!(
+        update.status.as_str(),
+        "submitting"
+            | "checking"
+            | "queued"
+            | "generating_portrait"
+            | "awaiting_confirmation"
+            | "generating_actions"
+            | "packaging"
+            | "completed"
+            | "service_unavailable"
+            | "failed"
+            | "cancelled"
+    ) {
+        return rejected("无效的生成状态");
+    }
+    if update
+        .server_job_id
+        .as_ref()
+        .is_some_and(|value| value.len() > 80 || !value.starts_with("gen_"))
+    {
+        return rejected("无效的服务端任务 ID");
+    }
+    connection.execute(
+        "UPDATE creation_drafts
+         SET status = ?2,
+             snapshot_version = snapshot_version + 1,
+             progress_percent = ?3,
+             server_job_id = COALESCE(?4, server_job_id),
+             error_code = ?5,
+             error_message = ?6,
+             retryable = ?7,
+             updated_at = datetime('now')
+         WHERE id = ?1",
+        params![
+            draft_id,
+            update.status,
+            update.progress_percent,
+            update.server_job_id,
+            update.error_code,
+            update.error_message,
+            i64::from(update.retryable)
+        ],
     )?;
     get_draft(connection, drafts_root, draft_id)
 }
@@ -1198,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn service_unavailable_and_cancelled_states_survive_snapshot_reload() {
+    fn generation_updates_and_cancelled_states_survive_snapshot_reload() {
         let root = tempdir().unwrap();
         let mut connection = database();
         let draft =
@@ -1219,7 +1285,22 @@ mod tests {
             },
         )
         .unwrap();
-        let unavailable = start_generation(&mut connection, root.path(), &draft.id).unwrap();
+        let submitting = start_generation(&mut connection, root.path(), &draft.id).unwrap();
+        assert_eq!(submitting.status, "submitting");
+        let unavailable = update_generation(
+            &mut connection,
+            root.path(),
+            &draft.id,
+            GenerationDraftUpdate {
+                status: "service_unavailable".to_owned(),
+                progress_percent: None,
+                server_job_id: None,
+                error_code: Some("local_generation_failed".to_owned()),
+                error_message: Some("local service stopped".to_owned()),
+                retryable: true,
+            },
+        )
+        .unwrap();
         assert_eq!(unavailable.status, "service_unavailable");
         assert!(unavailable.retryable);
         assert_eq!(snapshot(&connection, root.path()).unwrap().drafts.len(), 1);

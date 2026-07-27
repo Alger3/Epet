@@ -159,8 +159,8 @@ pub fn download_to_temporary(
     let redirect_policy = Policy::custom(|attempt| {
         if attempt.previous().len() > 3 {
             attempt.error("角色包重定向次数超过 3 次")
-        } else if attempt.url().scheme() != "https" {
-            attempt.error("角色包重定向只允许 HTTPS")
+        } else if !allowed_download_transport(attempt.url()) {
+            attempt.error("角色包重定向只允许 HTTPS 或本机 HTTP")
         } else {
             attempt.follow()
         }
@@ -565,8 +565,8 @@ fn validate_download_url(source_url: &str) -> Result<Url, CharacterStoreError> {
     }
     let url = Url::parse(source_url)
         .map_err(|_| CharacterStoreError::Invalid("下载地址不是有效的绝对 URL".to_owned()))?;
-    if url.scheme() != "https" {
-        return rejected("角色包下载只允许 HTTPS");
+    if !allowed_download_transport(&url) {
+        return rejected("角色包下载只允许 HTTPS 或本机 HTTP");
     }
     if url.host_str().is_none()
         || !url.username().is_empty()
@@ -576,6 +576,15 @@ fn validate_download_url(source_url: &str) -> Result<Url, CharacterStoreError> {
         return rejected("下载地址不得包含凭据、片段或空主机名");
     }
     Ok(url)
+}
+
+fn allowed_download_transport(url: &Url) -> bool {
+    url.scheme() == "https"
+        || (url.scheme() == "http"
+            && matches!(
+                url.host_str(),
+                Some("127.0.0.1" | "localhost" | "::1" | "[::1]")
+            ))
 }
 
 fn runtime_definition_from_package(
@@ -1361,6 +1370,9 @@ mod tests {
             assert!(validate_download_url(url).is_err());
         }
         assert!(validate_download_url("https://example.com/character.epet?token=short").is_ok());
+        assert!(validate_download_url("http://127.0.0.1:8000/character.epet").is_ok());
+        assert!(validate_download_url("http://localhost:8000/character.epet").is_ok());
+        assert!(validate_download_url("http://[::1]:8000/character.epet").is_ok());
     }
 
     #[test]

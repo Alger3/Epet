@@ -1,5 +1,24 @@
-# 本地基础设施
+# Epet 本地基础设施
 
-本目录用于本地 PostgreSQL、Redis 和 S3 兼容对象存储等依赖。开发配置使用安全假值和非生产端口，不包含 GPU 驱动、模型权重或生产拓扑。
+`compose.yaml` 只在本机回环地址开放服务：
 
-后续 Compose 配置必须带健康检查、固定主版本、显式卷和资源上限，并提供一条启动、一条状态检查和一条可恢复清理命令。Mock API/Worker 不应强制依赖本目录。
+- PostgreSQL：`127.0.0.1:5432`
+- Redis：`127.0.0.1:6379`
+- MinIO S3 API：`127.0.0.1:9000`
+- MinIO 控制台：`http://127.0.0.1:9001`
+
+启动和检查：
+
+```powershell
+npm run dev:infra
+docker compose -f infra/docker/compose.yaml ps
+```
+
+停止服务但保留数据：
+
+```powershell
+npm run stop:infra
+```
+
+数据位于 Docker named volumes。只有明确需要清空全部本地开发数据时，才应在 `down`
+后手动删除这些 volumes。

@@ -1,7 +1,7 @@
 mod behavior;
 mod character_store;
 mod commands;
-mod package;
+pub mod package;
 mod state;
 mod tray;
 mod windows;
@@ -53,6 +53,7 @@ pub fn run() {
             commands::save_draft_photo,
             commands::remove_draft_photo,
             commands::start_draft_generation,
+            commands::update_draft_generation,
             commands::cancel_character_draft,
             commands::delete_character_draft,
             commands::rename_installed_character,

@@ -156,6 +156,32 @@ pub fn start_draft_generation(
 }
 
 #[tauri::command]
+pub fn update_draft_generation(
+    app: AppHandle,
+    window: WebviewWindow,
+    draft_id: String,
+    update: workshop::GenerationDraftUpdate,
+) -> Result<CreationDraft, String> {
+    ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
+    let data_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let state = app.state::<AppState>();
+    let _operation = state
+        .workshop_operation()
+        .map_err(|error| error.to_string())?;
+    let mut database = state.database().map_err(|error| error.to_string())?;
+    workshop::update_generation(
+        &mut database,
+        &data_root.join("workshop-drafts"),
+        &draft_id,
+        update,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn cancel_character_draft(
     app: AppHandle,
     window: WebviewWindow,
