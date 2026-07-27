@@ -300,8 +300,14 @@ pub fn start_autonomous_movement(app: &AppHandle) {
                 continue;
             }
             let moved = ((x - position.x).abs() + (y - position.y).abs()) as f64;
-            if moved > 0.0 {
-                let _ = app.emit("pet-movement-distance", moved);
+            if let Some(direction) = movement_direction(position.x, x) {
+                let _ = app.emit(
+                    "pet-movement",
+                    serde_json::json!({
+                        "distance": moved,
+                        "direction": direction,
+                    }),
+                );
             }
 
             if last_persist.elapsed() >= AUTONOMOUS_MOVE_PERSIST_INTERVAL {
@@ -310,6 +316,16 @@ pub fn start_autonomous_movement(app: &AppHandle) {
             }
         }
     });
+}
+
+fn movement_direction(previous_x: i32, next_x: i32) -> Option<&'static str> {
+    if next_x < previous_x {
+        Some("left")
+    } else if next_x > previous_x {
+        Some("right")
+    } else {
+        None
+    }
 }
 
 pub fn start_inactivity_sleep_monitor(app: &AppHandle) {
@@ -1254,7 +1270,8 @@ fn install_native_hit_test(
 mod tests {
     use super::{
         HitboxRegion, advance_horizontal, autonomous_movement_step, can_autonomous_move,
-        clamp_position, hitboxes_contain, should_defer_position_settle, should_enter_sleep,
+        clamp_position, hitboxes_contain, movement_direction, should_defer_position_settle,
+        should_enter_sleep,
     };
     use crate::state::RuntimeState;
     use std::time::Duration;
@@ -1280,6 +1297,13 @@ mod tests {
         assert!(should_defer_position_settle(true, true));
         assert!(!should_defer_position_settle(true, false));
         assert!(!should_defer_position_settle(false, true));
+    }
+
+    #[test]
+    fn movement_direction_tracks_horizontal_facing() {
+        assert_eq!(movement_direction(100, 96), Some("left"));
+        assert_eq!(movement_direction(100, 104), Some("right"));
+        assert_eq!(movement_direction(100, 100), None);
     }
 
     #[test]

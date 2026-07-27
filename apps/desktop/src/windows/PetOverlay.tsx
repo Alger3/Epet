@@ -6,6 +6,11 @@ import { useCharacter } from "../shared/use-character";
 import { useRuntimeState } from "../shared/use-runtime-state";
 import { SpriteAtlas } from "./SpriteAtlas";
 
+interface PetMovementEvent {
+  distance: number;
+  direction: "left" | "right";
+}
+
 export function PetOverlay() {
   const movedRef = useRef(false);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -14,6 +19,7 @@ export function PetOverlay() {
   const [pressed, setPressed] = useState(false);
   const [sleepStir, setSleepStir] = useState(false);
   const [movementDistance, setMovementDistance] = useState(0);
+  const [facing, setFacing] = useState<"left" | "right">("left");
   const { character } = useCharacter(state.activeCharacterId);
 
   const finishPress = (resetMovement = true) => {
@@ -41,9 +47,14 @@ export function PetOverlay() {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listen<number>("pet-movement-distance", (event) => {
-      if (!disposed && Number.isFinite(event.payload) && event.payload > 0) {
-        setMovementDistance((distance) => distance + event.payload);
+    void listen<PetMovementEvent>("pet-movement", (event) => {
+      if (
+        !disposed &&
+        Number.isFinite(event.payload.distance) &&
+        event.payload.distance > 0
+      ) {
+        setMovementDistance((distance) => distance + event.payload.distance);
+        setFacing(event.payload.direction);
       }
     }).then((dispose) => {
       if (disposed) dispose();
@@ -125,6 +136,7 @@ export function PetOverlay() {
           behavior={state.lastBehaviorState}
           definition={character.animation}
           fallbackUrl={character.assetUrl}
+          facing={facing}
           paused={state.paused}
           movementDistance={movementDistance}
         />

@@ -14,6 +14,7 @@ interface SpriteAtlasProps {
   behavior: BehaviorState;
   definition?: SpriteAtlasDefinition;
   fallbackUrl: string;
+  facing?: "left" | "right";
   paused: boolean;
   movementDistance?: number;
 }
@@ -23,6 +24,7 @@ export function SpriteAtlas({
   behavior,
   definition,
   fallbackUrl,
+  facing = "left",
   paused,
   movementDistance = 0,
 }: SpriteAtlasProps) {
@@ -120,6 +122,7 @@ export function SpriteAtlas({
           className="pet-atlas-canvas"
           height={definition.canvas.height}
           role="img"
+          style={{ transform: facing === "right" ? "scaleX(-1)" : undefined }}
           width={definition.canvas.width}
         />
       ) : (
@@ -128,6 +131,7 @@ export function SpriteAtlas({
           className="pet-static-fallback"
           draggable={false}
           src={fallbackUrl}
+          style={{ transform: facing === "right" ? "scaleX(-1)" : undefined }}
         />
       )}
     </>
