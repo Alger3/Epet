@@ -154,11 +154,16 @@ export function useWorkshopState() {
     error,
     clearError: () => setError(null),
     reload,
-    createDraft: async (subjectKind: SubjectKind, authorizationConfirmed: boolean) => {
+    createDraft: async (
+      subjectKind: SubjectKind,
+      displayName: string,
+      authorizationConfirmed: boolean,
+    ) => {
       const draft = await run(
         () =>
           invoke<CreationDraft>("create_character_draft", {
             subjectKind,
+            displayName,
             authorizationConfirmed,
           }),
         false,

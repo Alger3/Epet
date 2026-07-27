@@ -129,9 +129,11 @@ pub fn create_draft(
     connection: &mut Connection,
     drafts_root: &Path,
     subject_kind: &str,
+    display_name: &str,
     authorization_confirmed: bool,
 ) -> Result<CreationDraft, WorkshopError> {
     validate_subject_kind(subject_kind)?;
+    let display_name = sanitize_display_name(display_name)?;
     if subject_kind == "human_avatar" && !authorization_confirmed {
         return rejected("创建人物草稿前必须确认成年人授权声明");
     }
@@ -141,12 +143,13 @@ pub fn create_draft(
     let authorization_version = (subject_kind == "human_avatar").then_some(AUTHORIZATION_VERSION);
     let result = connection.execute(
         "INSERT INTO creation_drafts (
-           id, subject_kind, authorization_confirmed, authorization_version,
+           id, subject_kind, display_name, authorization_confirmed, authorization_version,
            status, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, 'editing', datetime('now'), datetime('now'))",
+         ) VALUES (?1, ?2, ?3, ?4, ?5, 'editing', datetime('now'), datetime('now'))",
         params![
             draft_id,
             subject_kind,
+            display_name,
             i64::from(authorization_confirmed),
             authorization_version
         ],
@@ -898,6 +901,14 @@ fn validate_subject_kind(value: &str) -> Result<(), WorkshopError> {
     }
 }
 
+fn sanitize_display_name(value: &str) -> Result<String, WorkshopError> {
+    let name = value.trim();
+    if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control) {
+        return rejected("草稿名必须为 1-64 个可显示字符");
+    }
+    Ok(name.to_owned())
+}
+
 fn validate_photo_role(value: &str) -> Result<(), WorkshopError> {
     if matches!(value, "primary" | "supplemental_1" | "supplemental_2") {
         Ok(())
@@ -1060,12 +1071,26 @@ mod tests {
         let root = tempdir().unwrap();
         let mut connection = database();
         assert!(
-            create_draft(&mut connection, root.path(), "human_avatar", false)
-                .unwrap_err()
-                .to_string()
-                .contains("授权")
+            create_draft(
+                &mut connection,
+                root.path(),
+                "human_avatar",
+                "未授权人物",
+                false,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("授权")
         );
-        let draft = create_draft(&mut connection, root.path(), "human_avatar", true).unwrap();
+        let draft = create_draft(
+            &mut connection,
+            root.path(),
+            "human_avatar",
+            "  我的人物草稿  ",
+            true,
+        )
+        .unwrap();
+        assert_eq!(draft.display_name.as_deref(), Some("我的人物草稿"));
         assert!(draft.authorization_confirmed);
         assert_eq!(
             draft.authorization_version.as_deref(),
@@ -1074,10 +1099,37 @@ mod tests {
     }
 
     #[test]
+    fn draft_name_is_required_trimmed_and_bounded() {
+        let root = tempdir().unwrap();
+        let mut connection = database();
+
+        for invalid_name in ["", "   ", "坏\n名字"] {
+            assert!(
+                create_draft(&mut connection, root.path(), "pet_cat", invalid_name, false,)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("草稿名")
+            );
+        }
+
+        let too_long = "名".repeat(65);
+        assert!(
+            create_draft(&mut connection, root.path(), "pet_cat", &too_long, false,)
+                .unwrap_err()
+                .to_string()
+                .contains("草稿名")
+        );
+
+        let draft =
+            create_draft(&mut connection, root.path(), "pet_cat", "  橘子  ", false).unwrap();
+        assert_eq!(draft.display_name.as_deref(), Some("橘子"));
+    }
+
+    #[test]
     fn photos_are_reencoded_hashed_persisted_and_roles_are_independent() {
         let root = tempdir().unwrap();
         let mut connection = database();
-        let draft = create_draft(&mut connection, root.path(), "pet_cat", false).unwrap();
+        let draft = create_draft(&mut connection, root.path(), "pet_cat", "橘子", false).unwrap();
         let source = png(900, 800, 255);
         let primary = save_photo(
             &mut connection,
@@ -1149,7 +1201,8 @@ mod tests {
     fn service_unavailable_and_cancelled_states_survive_snapshot_reload() {
         let root = tempdir().unwrap();
         let mut connection = database();
-        let draft = create_draft(&mut connection, root.path(), "pet_cat", false).unwrap();
+        let draft =
+            create_draft(&mut connection, root.path(), "pet_cat", "测试猫咪", false).unwrap();
         let source = png(512, 512, 255);
         save_photo(
             &mut connection,

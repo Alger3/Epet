@@ -41,6 +41,7 @@ pub fn create_character_draft(
     app: AppHandle,
     window: WebviewWindow,
     subject_kind: String,
+    display_name: String,
     authorization_confirmed: bool,
 ) -> Result<CreationDraft, String> {
     ensure_caller(&window, &[windows::WORKSHOP_LABEL])?;
@@ -57,6 +58,7 @@ pub fn create_character_draft(
         &mut database,
         &data_root.join("workshop-drafts"),
         &subject_kind,
+        &display_name,
         authorization_confirmed,
     )
     .map_err(|error| error.to_string())

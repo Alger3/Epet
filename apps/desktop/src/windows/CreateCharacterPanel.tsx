@@ -64,10 +64,11 @@ export function CreateCharacterPanel() {
     setVertical(50);
   };
 
-  const createDraft = async (subjectKind: SubjectKind) => {
+  const createDraft = async (subjectKind: SubjectKind, displayName: string) => {
     setLocalError(null);
     await workshop.createDraft(
       subjectKind,
+      displayName,
       subjectKind === "human_avatar" && authorizationConfirmed,
     );
   };
@@ -126,7 +127,8 @@ export function CreateCharacterPanel() {
             本地草稿 · {draft.subjectKind === "pet_cat" ? "猫咪" : "Q 版人物"}
           </p>
           <h2 id="draft-title">
-            {draft.status === "service_unavailable" ? "草稿已安全保存" : "准备生成照片"}
+            {draft.displayName ??
+              (draft.status === "service_unavailable" ? "草稿已安全保存" : "准备生成照片")}
           </h2>
           <p className="draft-id">草稿 {draft.id}</p>
         </div>
@@ -328,10 +330,14 @@ function SubjectSelection({
   drafts: CreationDraft[];
   error: string | null;
   onAuthorizationChange(value: boolean): void;
-  onCreate(subjectKind: SubjectKind): Promise<void>;
+  onCreate(subjectKind: SubjectKind, displayName: string): Promise<void>;
   onDelete(draftId: string): void;
   onResume(draftId: string): void;
 }) {
+  const [selectedSubject, setSelectedSubject] = useState<SubjectKind>("pet_cat");
+  const [draftName, setDraftName] = useState("");
+  const normalizedDraftName = draftName.trim();
+
   return (
     <section className="create-page" aria-labelledby="create-title">
       <div>
@@ -340,34 +346,70 @@ function SubjectSelection({
         <p>创建后主体类型会锁定；草稿、授权和照片状态写入 SQLite，可在重启后恢复。</p>
       </div>
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
-      <div className="subject-choice-grid">
-        <button disabled={busy} onClick={() => void onCreate("pet_cat")} type="button">
+      <div aria-label="桌宠主体类型" className="subject-choice-grid" role="group">
+        <button
+          aria-pressed={selectedSubject === "pet_cat"}
+          className={`subject-choice-card ${
+            selectedSubject === "pet_cat" ? "subject-choice-card-selected" : ""
+          }`}
+          disabled={busy}
+          onClick={() => setSelectedSubject("pet_cat")}
+          type="button"
+        >
           <b aria-hidden="true">🐈</b>
           <strong>猫咪桌宠</strong>
           <span>一只猫、清晰头部，尽量包含身体、尾巴与花纹。</span>
         </button>
-        <div className="human-choice">
-          <div>
-            <b aria-hidden="true">人</b>
-            <strong>Q 版人物</strong>
-            <span>仅本人或已明确授权的成年人。</span>
-          </div>
-          <label className="consent-row">
-            <input
-              checked={authorizationConfirmed}
-              onChange={(event) => onAuthorizationChange(event.target.checked)}
-              type="checkbox"
-            />
-            <span>我确认主体是本人，或已获得该成年人的明确授权。</span>
-          </label>
-          <button
-            disabled={!authorizationConfirmed || busy}
-            onClick={() => void onCreate("human_avatar")}
-            type="button"
-          >
-            创建人物草稿
-          </button>
-        </div>
+        <button
+          aria-pressed={selectedSubject === "human_avatar"}
+          className={`subject-choice-card ${
+            selectedSubject === "human_avatar" ? "subject-choice-card-selected" : ""
+          }`}
+          disabled={busy}
+          onClick={() => setSelectedSubject("human_avatar")}
+          type="button"
+        >
+          <b aria-hidden="true">人</b>
+          <strong>Q 版人物</strong>
+          <span>仅本人或已明确授权的成年人。</span>
+        </button>
+      </div>
+      <label className="field-stack subject-draft-name">
+        <span>草稿名</span>
+        <input
+          autoComplete="off"
+          disabled={busy}
+          maxLength={64}
+          onChange={(event) => setDraftName(event.target.value)}
+          placeholder="例如：橘子、我的 Q 版形象"
+          type="text"
+          value={draftName}
+        />
+        <small>用于区分本地草稿，最多 64 个字符。</small>
+      </label>
+      {selectedSubject === "human_avatar" ? (
+        <label className="consent-row subject-consent">
+          <input
+            checked={authorizationConfirmed}
+            onChange={(event) => onAuthorizationChange(event.target.checked)}
+            type="checkbox"
+          />
+          <span>我确认主体是本人，或已获得该成年人的明确授权。</span>
+        </label>
+      ) : null}
+      <div className="subject-create-action">
+        <button
+          className="primary-button"
+          disabled={
+            busy ||
+            !normalizedDraftName ||
+            (selectedSubject === "human_avatar" && !authorizationConfirmed)
+          }
+          onClick={() => void onCreate(selectedSubject, normalizedDraftName)}
+          type="button"
+        >
+          自定义桌宠
+        </button>
       </div>
       <p className="availability-note">
         人物流程拒绝未成年人、公众人物模仿、多人合照、未经授权第三方和成人内容。
@@ -378,7 +420,10 @@ function SubjectSelection({
           {drafts.map((draft) => (
             <div key={draft.id}>
               <button onClick={() => onResume(draft.id)} type="button">
-                <strong>{draft.subjectKind === "pet_cat" ? "猫咪" : "Q 版人物"}</strong>
+                <strong>
+                  {draft.displayName ??
+                    (draft.subjectKind === "pet_cat" ? "猫咪" : "Q 版人物")}
+                </strong>
                 <span>{draft.photos.length} 张照片 · {statusLabel(draft.status)}</span>
               </button>
               <button

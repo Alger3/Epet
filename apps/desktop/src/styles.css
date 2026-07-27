@@ -832,45 +832,84 @@ html[data-window="pet-overlay"] #root {
 .subject-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
-.subject-choice-grid button {
+.subject-choice-card {
   display: grid;
-  gap: 8px;
-  min-height: 180px;
-  padding: 20px;
+  grid-template-columns: 40px 1fr;
+  gap: 3px 12px;
+  min-height: 112px;
+  padding: 14px 16px;
   border: 1px solid #dce4da;
-  border-radius: 18px;
+  border-radius: 15px;
   background: #fbfcf9;
   color: #263b30;
   cursor: pointer;
   text-align: left;
 }
 
-.subject-choice-grid button:hover {
+.subject-choice-card:hover {
   border-color: #c96c3f;
   background: #fff8f1;
 }
 
-.subject-choice-grid b {
+.subject-choice-card-selected {
+  border-color: #c96c3f;
+  background: #fff8f1;
+  box-shadow: 0 0 0 3px rgb(201 108 63 / 10%);
+}
+
+.subject-choice-card b {
   display: grid;
-  width: 48px;
-  height: 48px;
+  grid-row: 1 / span 2;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #e8eee3;
-  font-size: 22px;
+  font-size: 19px;
 }
 
-.subject-choice-grid strong {
-  font-size: 18px;
+.subject-choice-card strong {
+  align-self: end;
+  font-size: 16px;
 }
 
-.subject-choice-grid span,
+.subject-choice-card span,
 .create-page > div > p {
   color: #6e7b74;
   line-height: 1.55;
+}
+
+.subject-choice-card span {
+  grid-column: 2;
+  align-self: start;
+  font-size: 12px;
+}
+
+.subject-consent {
+  margin-top: -2px;
+}
+
+.subject-create-action {
+  display: flex;
+  justify-content: center;
+}
+
+.subject-create-action .primary-button {
+  width: min(100%, 320px);
+}
+
+.subject-draft-name {
+  width: min(100%, 480px);
+  margin: 0 auto;
+}
+
+.subject-draft-name small {
+  color: #7b8881;
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .requirements-card {
@@ -1163,41 +1202,6 @@ button:disabled {
 .draft-list span {
   color: #79867f;
   font-size: 11px;
-}
-
-.human-choice {
-  display: grid;
-  gap: 12px;
-  padding: 20px;
-  border: 1px solid #dce4da;
-  border-radius: 18px;
-  background: #fbfcf9;
-}
-
-.human-choice > div {
-  display: grid;
-  gap: 8px;
-}
-
-.human-choice b {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  place-items: center;
-  border-radius: 14px;
-  background: #e8eee3;
-  font-size: 20px;
-}
-
-.human-choice > button {
-  padding: 11px 13px;
-  border: 0;
-  border-radius: 11px;
-  background: #d16b3c;
-  color: white;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
 }
 
 @media (max-width: 1080px) {
