@@ -35,6 +35,14 @@ export function resolveSpriteAction(
 ): SpriteAction | null {
   const requested = definition.actions[behavior];
   if (requested) return requested;
+  if (behavior === "perch_sleep") {
+    return (
+      definition.actions.perch ??
+      definition.actions.sleep ??
+      definition.actions.idle ??
+      null
+    );
+  }
   return definition.actions.idle ?? null;
 }
 

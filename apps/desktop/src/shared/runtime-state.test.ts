@@ -5,6 +5,7 @@ import {
   DEFAULT_RUNTIME_STATE,
   MAX_PET_SCALE,
   MIN_PET_SCALE,
+  resolveVisualBehavior,
   shouldReleasePressedState,
 } from "./runtime-state";
 
@@ -20,6 +21,17 @@ describe("clampScale", () => {
 
   it("returns the safe default for non-finite input", () => {
     expect(clampScale(Number.NaN)).toBe(DEFAULT_RUNTIME_STATE.scale);
+  });
+});
+
+describe("resolveVisualBehavior", () => {
+  it("combines sleep and edge docking without changing runtime sleep state", () => {
+    expect(resolveVisualBehavior("sleep", "bottom")).toBe("perch_sleep");
+    expect(resolveVisualBehavior("sleep", null)).toBe("sleep");
+  });
+
+  it("returns an edge wake to the awake perch pose", () => {
+    expect(resolveVisualBehavior("wake", "left")).toBe("perch");
   });
 });
 

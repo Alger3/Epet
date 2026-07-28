@@ -651,9 +651,21 @@ pub fn begin_pet_drag(app: AppHandle, window: WebviewWindow) -> Result<RuntimeSt
         .clear_wake_clicks()
         .map_err(|error| error.to_string())?;
     if current.last_behavior_state == "sleep" {
+        let dragging = state
+            .update(|runtime| {
+                runtime.edge_dock = None;
+            })
+            .map_err(|error| error.to_string())?;
+        windows::emit_runtime_state(&app, &dragging);
         let drag_result = window.start_dragging();
         windows::restore_previous_foreground();
         if let Err(error) = drag_result {
+            let restored = state
+                .update(|runtime| {
+                    runtime.edge_dock = previous_edge_dock;
+                })
+                .map_err(|state_error| state_error.to_string())?;
+            windows::emit_runtime_state(&app, &restored);
             return Err(error.to_string());
         }
         windows::schedule_position_persist(window);

@@ -21,6 +21,16 @@
       "sha256": "f0b8b73568894631393838dae23099a0611ff73cab89c74658310141b5f2ebed",
       "prompt_summary": "Referenced orange tabby peeking over an implied screen edge with head and two front paws, subtle breathing and blinking, green chroma-key background",
       "postprocess": "remove_chroma_key.py with #00ff00 key, tolerance 90 and spill cleanup"
+    },
+    {
+      "action": "perch_sleep",
+      "file": "cat-perch-sleep-sheet.png",
+      "layout": "4x2",
+      "frames": 8,
+      "generated_at": "2026-07-28",
+      "sha256": "9a4ffa38d33a031fc31b3b50c78752bec1faac3d1a52b4b1bc309cb4dff61991",
+      "prompt_summary": "Referenced orange tabby asleep over an implied screen edge with closed eyes, head resting by both front paws and subtle breathing",
+      "postprocess": "remove_chroma_key.py with #00ff00 key, tolerance 90 and spill cleanup"
     }
   ],
   "distribution": "Bundled offline test pet; no third-party source image was used. Repository-wide licensing must be selected before public distribution."

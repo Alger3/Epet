@@ -7,11 +7,12 @@
 | 文件 | 类型 | 用途 |
 |---|---|---|
 | `cat-idle.png` | RGBA PNG，1254×1254 | 工坊预览和静态降级 Sprite |
-| `animation-atlas.png` | RGBA PNG | 阶段 5.4/5.4.1 猫咪七动作、60 帧内置 Atlas |
+| `animation-atlas.png` | RGBA PNG | 阶段 5.4/5.4.1 猫咪八动作、68 帧内置 Atlas |
 | `animation.json` | JSON | Atlas 帧、动作、时长和距离相位运行时定义 |
 | `cat-walk-sheet.png` | RGBA PNG | 8 帧真实交替步态来源 |
 | `cat-sleep-sheet.png` | RGBA PNG | 8 帧闭眼卧姿来源 |
 | `cat-perch-sheet.png` | RGBA PNG | 8 帧边缘露头与前爪趴伏来源 |
+| `cat-perch-sleep-sheet.png` | RGBA PNG | 8 帧边缘闭眼伏爪与呼吸来源 |
 | `metadata.json` | 机器可读来源记录 | 生成工具、提示词、尺寸、SHA-256 和后处理 |
 | `LICENSE.md` | 授权说明 | 当前分发边界与发布前待办 |
 
@@ -39,7 +40,7 @@
 `animation-atlas.png` SHA-256：
 
 ```text
-7c61ef9a3f92a8c2271801b24f0175a2e9b7c270718ff57b8abbaf184d403ee1
+733e5d5ba9e8780a8cfd3d7ac3bbf240664185fd6dc2c042891e602953a60d5e
 ```
 
 - 不手工覆盖二进制后保留旧哈希；任何修改必须提升 `metadata.json` 版本并重算哈希。

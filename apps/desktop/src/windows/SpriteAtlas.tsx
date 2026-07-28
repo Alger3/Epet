@@ -85,11 +85,15 @@ export function SpriteAtlas({
     action?.phaseSource === "distance"
       ? distanceFrameIndex(movementDistance, action)
       : frameIndex;
+  const hasEdgeAction =
+    behavior === "perch_sleep"
+      ? Boolean(definition?.actions.perch_sleep ?? definition?.actions.perch)
+      : Boolean(definition?.actions.perch);
   const spriteTransform =
-    behavior === "perch" &&
+    (behavior === "perch" || behavior === "perch_sleep") &&
     edgeDock &&
     !failed &&
-    Boolean(definition?.actions.perch)
+    hasEdgeAction
       ? {
           bottom: undefined,
           top: "rotate(180deg)",

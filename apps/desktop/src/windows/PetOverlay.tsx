@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-import { shouldReleasePressedState } from "../shared/runtime-state";
+import {
+  resolveVisualBehavior,
+  shouldReleasePressedState,
+} from "../shared/runtime-state";
 import { useCharacter } from "../shared/use-character";
 import { useRuntimeState } from "../shared/use-runtime-state";
 import { SpriteAtlas } from "./SpriteAtlas";
@@ -21,6 +24,10 @@ export function PetOverlay() {
   const [movementDistance, setMovementDistance] = useState(0);
   const [facing, setFacing] = useState<"left" | "right">("left");
   const { character } = useCharacter(state.activeCharacterId);
+  const visualBehavior = resolveVisualBehavior(
+    state.lastBehaviorState,
+    state.edgeDock,
+  );
 
   const finishPress = (resetMovement = true) => {
     if (resetMovement) movedRef.current = false;
@@ -82,7 +89,7 @@ export function PetOverlay() {
 
   return (
     <main
-      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${state.lastBehaviorState} ${state.edgeDock ? `pet-edge-${state.edgeDock}` : ""} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""} ${sleepStir && state.lastBehaviorState === "sleep" ? "pet-sleep-stir" : ""}`}
+      className={`pet-overlay pet-overlay-${character.subjectKind} pet-behavior-${visualBehavior} ${state.edgeDock ? `pet-edge-${state.edgeDock}` : ""} ${state.paused ? "pet-paused" : ""} ${pressed ? "pet-pressed" : ""} ${sleepStir && state.lastBehaviorState === "sleep" ? "pet-sleep-stir" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         void actions.restoreFocus();
@@ -133,7 +140,7 @@ export function PetOverlay() {
       >
         <SpriteAtlas
           alt=""
-          behavior={state.lastBehaviorState}
+          behavior={visualBehavior}
           definition={character.animation}
           fallbackUrl={character.assetUrl}
           facing={facing}

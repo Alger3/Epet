@@ -13,9 +13,20 @@ export type BehaviorState =
   | "drag"
   | "drop"
   | "wake"
-  | "perch";
+  | "perch"
+  | "perch_sleep";
 
 export type EdgeDock = "left" | "right" | "top" | "bottom";
+
+export function resolveVisualBehavior(
+  behavior: BehaviorState,
+  edgeDock: EdgeDock | null,
+): BehaviorState {
+  if (!edgeDock) return behavior;
+  if (behavior === "sleep") return "perch_sleep";
+  if (behavior === "wake" || behavior === "idle") return "perch";
+  return behavior;
+}
 
 export interface RuntimeState {
   activeCharacterId: string;

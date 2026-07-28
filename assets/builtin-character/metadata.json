@@ -24,6 +24,16 @@
       "sha256": "ee9c8e0be91909266a563e11b3daf814640201017ccf7285b9791d2508eba39b",
       "prompt_summary": "Referenced chibi character peeking over an implied screen edge with head, glasses and two hands, subtle breathing and blinking, green chroma-key background",
       "postprocess": "remove_chroma_key.py with #00ff00 key, tolerance 90 and spill cleanup"
+    },
+    {
+      "action": "perch_sleep",
+      "file": "human-perch-sleep-sheet.png",
+      "layout": "4x2",
+      "frames": 8,
+      "generated_at": "2026-07-28",
+      "sha256": "0ea257569ec6e7d9642a7dfdba15b0034a85a4b2c8e3510d879472aa84e19db5",
+      "prompt_summary": "Referenced chibi character asleep over an implied screen edge with closed eyes behind glasses, head resting on crossed forearms and subtle breathing",
+      "postprocess": "remove_chroma_key.py with #ff00ff key, tolerance 105, spill cleanup and 1px edge contraction"
     }
   ]
 }

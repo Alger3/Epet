@@ -29,7 +29,7 @@ describe("built-in character catalog", () => {
     for (const character of BUILTIN_CHARACTERS) {
       const animation = character.animation;
       expect(animation).toBeDefined();
-      expect(Object.keys(animation?.frames ?? {})).toHaveLength(60);
+      expect(Object.keys(animation?.frames ?? {})).toHaveLength(68);
       for (const actionName of [
         "idle",
         "walk",
@@ -38,6 +38,7 @@ describe("built-in character catalog", () => {
         "drag",
         "wake",
         "perch",
+        "perch_sleep",
       ]) {
         expect(animation?.actions[actionName].frames.length).toBeGreaterThan(1);
       }

@@ -447,8 +447,12 @@ pub fn schedule_behavior_timeout(
             return;
         }
         if let Ok(next) = state.update(|runtime| {
-            runtime.last_behavior_state =
-                behavior::transition(&runtime.last_behavior_state, event).to_owned();
+            runtime.last_behavior_state = behavior::transition_with_edge(
+                &runtime.last_behavior_state,
+                event,
+                runtime.edge_dock.is_some(),
+            )
+            .to_owned();
         }) {
             emit_runtime_state(&app, &next);
         }
@@ -508,7 +512,11 @@ fn persist_pet_geometry(
             apply_geometry(runtime, &geometry);
             if settle_drag {
                 if let Some(edge) = dragged_to_edge
-                    && matches!(runtime.last_behavior_state.as_str(), "drag" | "sleep")
+                    && runtime.last_behavior_state == "sleep"
+                {
+                    runtime.edge_dock = Some(edge.to_owned());
+                } else if let Some(edge) = dragged_to_edge
+                    && runtime.last_behavior_state == "drag"
                 {
                     runtime.edge_dock = Some(edge.to_owned());
                     runtime.last_behavior_state = "perch".to_owned();
@@ -975,7 +983,10 @@ fn should_enter_sleep(state: &RuntimeState, idle_for: Duration) -> bool {
     state.sleep_after_minutes > 0
         && state.visible
         && !state.paused
-        && matches!(state.last_behavior_state.as_str(), "idle" | "walk")
+        && matches!(
+            state.last_behavior_state.as_str(),
+            "idle" | "walk" | "perch"
+        )
         && idle_for >= Duration::from_secs(u64::from(state.sleep_after_minutes) * 60)
 }
 
@@ -1470,6 +1481,8 @@ mod tests {
         assert!(should_enter_sleep(&state, Duration::from_secs(600)));
 
         state.last_behavior_state = "walk".to_owned();
+        assert!(should_enter_sleep(&state, Duration::from_secs(600)));
+        state.last_behavior_state = "perch".to_owned();
         assert!(should_enter_sleep(&state, Duration::from_secs(600)));
         state.last_behavior_state = "sleep".to_owned();
         assert!(!should_enter_sleep(&state, Duration::from_secs(600)));

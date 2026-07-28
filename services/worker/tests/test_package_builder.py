@@ -19,7 +19,7 @@ def test_package_is_deterministic_and_self_describing() -> None:
     second = build_epet(source_png(), "测试猫咪")
     assert sha256(first).digest() == sha256(second).digest()
     assert sha256(first).hexdigest() == (
-        "ec637d322518494fc894c390bf259d2d4c8c9301a78798019e858ea73ba4f3ef"
+        "64a3ad2c3ac684b14a5e75755c0f1538a48d2e6157766940ecc04e36c6c3bbe3"
     )
 
     with ZipFile(BytesIO(first)) as archive:
@@ -47,6 +47,7 @@ def test_package_is_deterministic_and_self_describing() -> None:
             "drag",
             "wake",
             "perch",
+            "perch_sleep",
         }
         assert all(
             len(action["frames"]) > 1 for action in manifest["actions"].values()
@@ -55,7 +56,7 @@ def test_package_is_deterministic_and_self_describing() -> None:
         assert manifest["actions"]["walk"]["stride_length"] == 48
         atlas = json.loads(archive.read("atlas/pet.json"))
         assert sha256(archive.read("atlas/pet.png")).hexdigest() == (
-            "60aab8d267548619884ae859eef7a06cdc0adf7c072c0c9f607c6029954a88ce"
+            "61f736f3b08a3fdcb2198c2f64449f9a6474b12cde1a8317908eb160c0fdb6a5"
         )
         assert len(atlas["frames"]) == sum(
             len(action["frames"]) for action in manifest["actions"].values()
@@ -99,14 +100,14 @@ def test_package_is_deterministic_and_self_describing() -> None:
 def test_human_template_has_limbs_secondary_motion_and_distinct_identity() -> None:
     package = build_epet(source_png(), "测试人物", "human_avatar")
     assert sha256(package).hexdigest() == (
-        "f65ef8fbeb9a624b670ca6c47200efd49b9823d44307868f5373e3605d6f413d"
+        "eedc57a40a2426772fd6cd0075352264e49165d6644a88a23ca3b825a998392c"
     )
     with ZipFile(BytesIO(package)) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         rig = json.loads(archive.read("animation/rig.json"))
         clips = json.loads(archive.read("animation/clips.json"))
         assert sha256(archive.read("atlas/pet.png")).hexdigest() == (
-            "0a76efd64a228822f82637f6cd14459e79d154f60c0b6f2c65bce5000c0e7da8"
+            "259cedac5590c9b0968e0d70e3beca29acff2b5d21b54a9fbc9a5f0377acf580"
         )
     assert manifest["species"] == "human"
     assert manifest["subject_kind"] == "human_avatar"

@@ -404,7 +404,8 @@ html[data-window="pet-overlay"] #root {
   animation: pet-sleep 3.2s ease-in-out infinite;
 }
 
-.pet-behavior-sleep::after {
+.pet-behavior-sleep::after,
+.pet-behavior-perch_sleep::after {
   position: absolute;
   top: 12%;
   right: 14%;
@@ -438,9 +439,23 @@ html[data-window="pet-overlay"] #root {
   animation: pet-perch 2.6s ease-in-out infinite;
 }
 
+.pet-behavior-perch_sleep .pet-float {
+  transform-origin: 50% 50%;
+  animation: pet-perch-sleep 3.4s ease-in-out infinite;
+}
+
+.pet-behavior-perch_sleep.pet-sleep-stir .pet-float {
+  animation: pet-sleep-stir 320ms ease-out both;
+}
+
 @keyframes pet-perch {
   0%, 100% { transform: translateY(0) rotate(-0.35deg); }
   50% { transform: translateY(2px) rotate(0.35deg); }
+}
+
+@keyframes pet-perch-sleep {
+  0%, 100% { transform: translateY(1px) scale(1, 0.995); }
+  50% { transform: translateY(3px) scale(1.006, 0.985); }
 }
 
 .pet-paused .pet-float {

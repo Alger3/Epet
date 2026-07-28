@@ -34,6 +34,19 @@ describe("sprite atlas actions", () => {
     expect(resolveSpriteAction("wake", definition)).toBe(definition.actions.idle);
   });
 
+  it("lets edge sleep fall back to an older perch action", () => {
+    const compatible = {
+      ...definition,
+      actions: {
+        ...definition.actions,
+        perch: definition.actions.tap,
+      },
+    };
+    expect(resolveSpriteAction("perch_sleep", compatible)).toBe(
+      compatible.actions.perch,
+    );
+  });
+
   it("loops idle and holds the last non-looping frame", () => {
     expect(nextFrameIndex(0, definition.actions.idle)).toBe(1);
     expect(nextFrameIndex(1, definition.actions.idle)).toBe(0);

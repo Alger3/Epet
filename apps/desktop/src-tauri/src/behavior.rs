@@ -19,9 +19,21 @@ pub fn transition(current: &str, event: BehaviorEvent) -> &'static str {
         BehaviorEvent::AnimationFinished if matches!(current, "tap" | "drop" | "wake") => "idle",
         BehaviorEvent::StartWalk if current == "idle" => "walk",
         BehaviorEvent::StopWalk if current == "walk" => "idle",
-        BehaviorEvent::FallAsleep if matches!(current, "idle" | "walk") => "sleep",
+        BehaviorEvent::FallAsleep if matches!(current, "idle" | "walk" | "perch") => "sleep",
         BehaviorEvent::Wake if current == "sleep" => "wake",
         _ => normalize(current),
+    }
+}
+
+pub fn transition_with_edge(
+    current: &str,
+    event: BehaviorEvent,
+    edge_docked: bool,
+) -> &'static str {
+    if current == "wake" && event == BehaviorEvent::AnimationFinished && edge_docked {
+        "perch"
+    } else {
+        transition(current, event)
     }
 }
 
@@ -41,7 +53,7 @@ pub fn normalize(current: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{BehaviorEvent, normalize, transition};
+    use super::{BehaviorEvent, normalize, transition, transition_with_edge};
 
     #[test]
     fn supports_idle_walk_and_sleep_transitions() {
@@ -49,8 +61,13 @@ mod tests {
         assert_eq!(transition("walk", BehaviorEvent::StopWalk), "idle");
         assert_eq!(transition("idle", BehaviorEvent::FallAsleep), "sleep");
         assert_eq!(transition("walk", BehaviorEvent::FallAsleep), "sleep");
+        assert_eq!(transition("perch", BehaviorEvent::FallAsleep), "sleep");
         assert_eq!(transition("sleep", BehaviorEvent::Wake), "wake");
         assert_eq!(transition("wake", BehaviorEvent::AnimationFinished), "idle");
+        assert_eq!(
+            transition_with_edge("wake", BehaviorEvent::AnimationFinished, true),
+            "perch"
+        );
     }
 
     #[test]

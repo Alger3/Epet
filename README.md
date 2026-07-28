@@ -4,7 +4,7 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。目标是让用户使�
 
 当前仓库处于 **阶段 5：生成服务与动画资产基础**。阶段 2–4 已完成桌面壳、Sprite Atlas 运行时、`.epet` 安全安装、角色库、本地草稿、照片清理和桌面生成状态 UI；阶段 5 已实现本地 FastAPI、PostgreSQL、Redis、MinIO、CPU/Mock Worker，以及桌面上传、SSE/轮询、产物下载、SHA-256 校验、自动安装和激活闭环。
 
-步骤 5.4 的动画基线和 5.4.1 屏幕边缘趴伏状态已经完成。当前确定性 Mock Worker 会从清理后的照片提取稳定配色，使用猫咪或人物标准部件与骨骼生成 `idle`、`walk`、`sleep`、`tap`、`drag`、`wake`、`perch` 多帧动作，并离线烘焙为 `.epet` v2 Atlas；走路帧按桌面实际移动距离推进，睡眠包含卧姿、闭眼和呼吸。用户把桌宠拖到显示器工作区边缘松手后，会吸附并切换为只露出头和前爪/双手的趴伏动画，再次拖动或重置位置即可退出。它仍不会把照片真正重绘为对应身份的 Q 版角色，下一步是接入 OpenVINO/CUDA/CPU 真实模型 Provider。项目不会把程序化 Mock 产物描述为 AI 生成成功。
+步骤 5.4 的动画基线和 5.4.1 屏幕边缘趴伏状态已经完成。当前确定性 Mock Worker 会从清理后的照片提取稳定配色，使用猫咪或人物标准部件与骨骼生成 `idle`、`walk`、`sleep`、`tap`、`drag`、`wake`、`perch`、`perch_sleep` 多帧动作，并离线烘焙为 `.epet` v2 Atlas；走路帧按桌面实际移动距离推进，睡眠包含卧姿、闭眼和呼吸。用户把桌宠拖到显示器工作区边缘松手后会吸附并切换为只露出头和前爪/双手的趴伏动画；睡着时拖到边缘会播放闭眼伏在爪/手臂上的 `perch_sleep`，拖回屏幕中央仍继续睡眠，三击才会唤醒。它仍不会把照片真正重绘为对应身份的 Q 版角色，下一步是接入 OpenVINO/CUDA/CPU 真实模型 Provider。项目不会把程序化 Mock 产物描述为 AI 生成成功。
 
 详细进度见 [PLAN.md](PLAN.md)，已实现的动画契约见 [部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)。
 

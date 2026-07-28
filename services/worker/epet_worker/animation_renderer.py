@@ -33,6 +33,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "drag": ActionSpec(6, 100, True),
     "wake": ActionSpec(8, 90, False, next_action="idle"),
     "perch": ActionSpec(8, 160, True),
+    "perch_sleep": ActionSpec(8, 180, True),
 }
 
 
@@ -70,7 +71,7 @@ def _line(draw: ImageDraw.ImageDraw, points, fill, width: int) -> None:
 def _cat_frame(
     action: str, phase: float, palette: tuple[tuple[int, int, int], ...]
 ) -> Image.Image:
-    if action == "perch":
+    if action in {"perch", "perch_sleep"}:
         base = _cat_frame("idle", phase, palette)
         frame = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
         head = base.crop((55, 24, 190, 142))
@@ -79,6 +80,19 @@ def _cat_frame(
         _, dark, light, _ = palette
         for paw in ((72, 190, 116, 224), (150, 190, 194, 224)):
             draw.ellipse(paw, fill=light + (255,), outline=dark + (255,), width=3)
+        if action == "perch_sleep":
+            for eye_x in (110, 148):
+                draw.ellipse(
+                    (eye_x - 9, 133, eye_x + 9, 151),
+                    fill=light + (255,),
+                )
+                draw.arc(
+                    (eye_x - 9, 137, eye_x + 9, 149),
+                    10,
+                    170,
+                    fill=dark + (255,),
+                    width=3,
+                )
         return frame
 
     primary, dark, light, accent = palette
@@ -189,7 +203,7 @@ def _cat_frame(
 def _human_frame(
     action: str, phase: float, palette: tuple[tuple[int, int, int], ...]
 ) -> Image.Image:
-    if action == "perch":
+    if action in {"perch", "perch_sleep"}:
         base = _human_frame("idle", phase, palette)
         frame = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
         head = base.crop((68, 18, 188, 132))
@@ -198,6 +212,19 @@ def _human_frame(
         _, dark, light, _ = palette
         for hand in ((73, 184, 112, 218), (154, 184, 193, 218)):
             draw.ellipse(hand, fill=light + (255,), outline=dark + (255,), width=3)
+        if action == "perch_sleep":
+            for eye_x in (111, 145):
+                draw.ellipse(
+                    (eye_x - 8, 126, eye_x + 8, 143),
+                    fill=light + (255,),
+                )
+                draw.arc(
+                    (eye_x - 8, 131, eye_x + 8, 142),
+                    10,
+                    170,
+                    fill=dark + (255,),
+                    width=3,
+                )
         return frame
 
     primary, dark, light, accent = palette
@@ -342,9 +369,13 @@ def render_animation(photo: bytes, subject_kind: str) -> dict:
         elif action_name == "sleep":
             channels += ["pose.sleep", "eyes.visibility", "torso.scale"]
             events = ["eyes_close"]
-        elif action_name == "perch":
+        elif action_name in {"perch", "perch_sleep"}:
             channels += ["pose.perch", "eyes.visibility", "hands.position"]
-            events = ["edge_dock"]
+            events = (
+                ["edge_dock", "eyes_close"]
+                if action_name == "perch_sleep"
+                else ["edge_dock"]
+            )
         clips[action_name] = {
             "frame_count": spec.frames,
             "duration_ms": spec.frames * spec.duration_ms,
