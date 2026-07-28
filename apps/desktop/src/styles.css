@@ -1147,6 +1147,63 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.provider-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #d7ddd4;
+  border-radius: 18px;
+  background: rgb(255 255 255 / 76%);
+}
+
+.provider-heading,
+.hardware-summary,
+.provider-result {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.hardware-summary {
+  align-items: stretch;
+}
+
+.hardware-summary > span,
+.provider-result {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f3f5ef;
+}
+
+.hardware-summary strong,
+.provider-result strong,
+.provider-result small {
+  display: block;
+}
+
+.provider-mode {
+  display: flex;
+  gap: 8px;
+}
+
+.provider-mode button {
+  padding: 8px 14px;
+  border: 1px solid #d7ddd4;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+}
+
+.provider-mode button[aria-pressed="true"] {
+  border-color: #dc7b42;
+  background: #fff0e4;
+}
+
+.cpu-warning {
+  color: #b76b00;
+}
+
 .crop-actions > button,
 .draft-actions > button {
   width: auto;

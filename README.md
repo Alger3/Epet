@@ -4,7 +4,9 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。目标是让用户使�
 
 当前仓库处于 **阶段 5：生成服务与动画资产基础**。阶段 2–4 已完成桌面壳、Sprite Atlas 运行时、`.epet` 安全安装、角色库、本地草稿、照片清理和桌面生成状态 UI；阶段 5 已实现本地 FastAPI、PostgreSQL、Redis、MinIO、CPU/Mock Worker，以及桌面上传、SSE/轮询、产物下载、SHA-256 校验、自动安装和激活闭环。
 
-步骤 5.4 的动画基线和 5.4.1 屏幕边缘趴伏状态已经完成。当前确定性 Mock Worker 会从清理后的照片提取稳定配色，使用猫咪或人物标准部件与骨骼生成 `idle`、`walk`、`sleep`、`tap`、`drag`、`wake`、`perch`、`perch_sleep` 多帧动作，并离线烘焙为 `.epet` v2 Atlas；走路帧按桌面实际移动距离推进，睡眠包含卧姿、闭眼和呼吸。用户把桌宠拖到显示器工作区边缘松手后会吸附并切换为只露出头和前爪/双手的趴伏动画；睡着时拖到边缘会播放闭眼伏在爪/手臂上的 `perch_sleep`，拖回屏幕中央仍继续睡眠，三击才会唤醒。它仍不会把照片真正重绘为对应身份的 Q 版角色，下一步是接入 OpenVINO/CUDA/CPU 真实模型 Provider。项目不会把程序化 Mock 产物描述为 AI 生成成功。
+步骤 5.4 的动画基线和 5.4.1 屏幕边缘趴伏状态已经完成。当前确定性 Mock Worker 会从清理后的照片提取稳定配色，使用猫咪或人物标准部件与骨骼生成 `idle`、`walk`、`sleep`、`tap`、`drag`、`wake`、`perch`、`perch_sleep` 多帧动作，并离线烘焙为 `.epet` v2 Atlas；走路帧按桌面实际移动距离推进，睡眠包含卧姿、闭眼和呼吸。用户把桌宠拖到显示器工作区边缘松手后会吸附并切换为只露出头和前爪/双手的趴伏动画；睡着时拖到边缘会播放闭眼伏在爪/手臂上的 `perch_sleep`，拖回屏幕中央仍继续睡眠，三击才会唤醒。
+
+步骤 5.5 的 Provider 基础层正在实施：Worker 已有统一数据契约、Registry、MockProvider、硬件探测、确定性 Planner、模型清单/校验缓存和能力发布；FastAPI 提供能力与模型操作接口，创建页可展示 CPU/GPU、自动方案、实际 Provider、模型状态、预计速度和不可用原因，并支持自动/手动选择。真实 OpenVINO/CUDA/CPU 推理适配器和模型下载源尚未接入，因此当前本地生成默认仍显式使用 `mock`，不会把程序化 Mock 产物描述为 AI 生成成功。
 
 详细进度见 [PLAN.md](PLAN.md)，已实现的动画契约见 [部件拆分、骨骼动画与 Atlas 流水线](docs/architecture/rigged-atlas-pipeline.md)。
 
@@ -15,7 +17,7 @@ Epet 是一款面向 Windows 的 2D 桌面角色应用。目标是让用户使�
 - 两类主体各冻结一种画风、独立创建接口/AI 流水线/质量 Gate；桌面同时只激活一个角色。
 - 输入为一张主照片和最多两张补充照片。
 - 客户端只运行 Sprite Atlas；骨骼、部件形变和生成模型只存在于 Worker 制作阶段。
-- 本地 Worker 按 CUDA、OpenVINO GPU、OpenVINO CPU 选择生成 Provider；同一任务契约后续可以部署到云端。
+- 本地 Worker 的 Planner 按 CUDA、OpenVINO GPU、OpenVINO CPU 评估候选；只有模型、运行时和适配器完成验证后才标记为可用。同一任务契约后续可以部署到云端。
 - PostgreSQL 任务快照是状态事实来源；Redis 与 SSE 只负责通知。
 - 匿名安装 ID 不是身份凭证；公开或云端服务访问必须使用设备密钥与短期令牌。当前无鉴权 API 仅限回环地址本地开发。
 
@@ -105,6 +107,8 @@ npm run dev:desktop
 
 FastAPI 文档位于 `http://127.0.0.1:8000/docs`，MinIO 本地控制台位于 `http://127.0.0.1:9001`。默认账号和端口只用于回环地址开发，不得直接暴露到公网。完整说明见 [本地照片生成开发](docs/local-generation-development.md)。
 
+Worker 启动后会把脱敏能力快照发布到 `GET /v1/capabilities`。当前 `EPET_GENERATION_PROVIDER` 默认值为 `mock`，用于保持既有本地闭环；可设置 `EPET_MODEL_CACHE_DIR` 覆盖默认的 `services/worker/.model-cache`。模型权重目录已从 Git 排除，清单中尚未配置真实模型下载 URL，因此 OpenVINO/CUDA 选项会明确显示不可用，而不会静默退回 Mock。
+
 `dev:web` 可以在浏览器中预览 React/PixiJS，但不包含 Tauri Command、原生窗口、照片本地持久化和自动安装能力。根命令状态如下：
 
 | 命令 | 状态 | 说明 |
@@ -112,8 +116,8 @@ FastAPI 文档位于 `http://127.0.0.1:8000/docs`，MinIO 本地控制台位于 
 | `npm run setup:python` | 可用 | 安装 FastAPI、PostgreSQL、Redis、MinIO、Pillow 等 Python 依赖 |
 | `npm run dev:infra` | 可用 | 启动本地 PostgreSQL、Redis 和 MinIO |
 | `npm run stop:infra` | 可用 | 停止基础设施容器但保留 named volumes |
-| `npm run dev:api` | 可用 | 启动本地 FastAPI、上传/SSE/任务/删除和产物下载接口 |
-| `npm run dev:worker` | 可用 | 启动确定性多帧骨骼 Mock Worker；生成动画 Atlas，但当前不执行真实 Q 版重绘 |
+| `npm run dev:api` | 可用 | 启动本地 FastAPI、上传/SSE/任务/删除、能力、模型管理和产物下载接口 |
+| `npm run dev:worker` | 可用 | 启动多硬件 Planner 与确定性 MockProvider；生成动画 Atlas，但当前不执行真实 Q 版重绘 |
 | `npm run dev:desktop` | 可用 | 启动 Tauri 主窗口、桌宠窗口和托盘 |
 | `npm run dev:web` | 可用 | 仅浏览器预览 React/PixiJS，不含原生窗口能力 |
 | `npm run test` | 可用 | 角色目录、运行状态和壳配置快速测试 |

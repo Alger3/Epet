@@ -2,7 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SubjectKind } from "./characters";
-import { generateInstallAndActivate } from "./generation-service";
+import {
+  generateInstallAndActivate,
+  type ProviderSelection,
+} from "./generation-service";
 
 export type PhotoRole = "primary" | "supplemental_1" | "supplemental_2";
 export type DraftStatus =
@@ -195,11 +198,11 @@ export function useWorkshopState() {
       ),
     removePhoto: (draftId: string, role: PhotoRole) =>
       run(() => invoke<CreationDraft>("remove_draft_photo", { draftId, role })),
-    startGeneration: (draftId: string) =>
+    startGeneration: (draftId: string, selection?: ProviderSelection) =>
       run(async () => {
         const draft = snapshot.drafts.find((item) => item.id === draftId);
         if (!draft) throw new Error("未找到要生成的本地草稿。");
-        await generateInstallAndActivate(draft, reload);
+        await generateInstallAndActivate(draft, reload, selection);
       }),
     cancelDraft: (draftId: string) =>
       run(() => invoke<CreationDraft>("cancel_character_draft", { draftId })),

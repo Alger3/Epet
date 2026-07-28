@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "model_id": "test-model",
+      "provider_id": "cuda",
+      "revision": "1",
+      "filename": "model.bin",
+      "sha256": "2ea01baedca08cdc2505caca37f69dd248d5107c8a894457285e55625e530ca4",
+      "download_url": null,
+      "built_in": false
+    }
+  ]
+}

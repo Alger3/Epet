@@ -22,6 +22,64 @@ interface GenerationSnapshot {
   error?: { code: string; params: Record<string, unknown> } | null;
 }
 
+export interface ProviderSelection {
+  providerMode: "configured" | "auto" | "manual";
+  requestedProvider?: "mock" | "cuda" | "openvino-gpu" | "openvino-cpu";
+  requestedDeviceId?: string;
+}
+
+export interface GenerationCapabilities {
+  worker_online: boolean;
+  configured_provider: string | null;
+  unavailable_reason?: string;
+  hardware: {
+    computer_model: string;
+    cpu: { id: string; name: string; memory_mb: number | "unknown" };
+    gpus: Array<{
+      id: string;
+      name: string;
+      vendor: string;
+      memory_mb: number | "unknown";
+      runtime: string;
+    }>;
+    system_memory_mb: number | "unknown";
+    warnings: string[];
+  } | null;
+  automatic_plan:
+    | {
+        provider_id?: string;
+        device_id?: string;
+        estimated_speed?: string;
+        warnings?: string[];
+        error?: { message: string; details?: Record<string, unknown> };
+      }
+    | null;
+  actual_plan: {
+    provider_id: string;
+    device_id: string;
+    model_id?: string | null;
+    estimated_speed: string;
+  } | null;
+  providers: Array<{
+    provider_id: "mock" | "cuda" | "openvino-gpu" | "openvino-cpu";
+    display_name: string;
+    available: boolean;
+    device_ids: string[];
+    model_id?: string | null;
+    model_downloaded: boolean;
+    estimated_speed: string;
+    unavailable_reason?: string | null;
+    development_only: boolean;
+  }>;
+  models: Array<{
+    model_id: string;
+    provider_id: string;
+    revision: string;
+    downloaded: boolean;
+    download_url?: string | null;
+  }>;
+}
+
 interface Artifact {
   download_url: string;
   sha256: string;
@@ -68,6 +126,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export function getGenerationCapabilities(): Promise<GenerationCapabilities> {
+  return request<GenerationCapabilities>("/v1/capabilities");
+}
+
+export function requestModelDownload(modelId: string): Promise<void> {
+  return request(`/v1/models/${encodeURIComponent(modelId)}/download`, {
+    method: "POST",
+  });
 }
 
 async function persist(draftId: string, update: DraftUpdate): Promise<CreationDraft> {
@@ -193,6 +261,7 @@ async function watchGeneration(
 export async function generateInstallAndActivate(
   draft: CreationDraft,
   onChanged: () => Promise<void>,
+  selection: ProviderSelection = { providerMode: "configured" },
 ): Promise<void> {
   await invoke<CreationDraft>("start_draft_generation", { draftId: draft.id });
   await onChanged();
@@ -223,6 +292,9 @@ export async function generateInstallAndActivate(
         species: draft.subjectKind === "human_avatar" ? "human" : "cat",
         subject_kind: draft.subjectKind,
         display_name: draft.displayName ?? "自定义桌宠",
+        provider_mode: selection.providerMode,
+        requested_provider: selection.requestedProvider,
+        requested_device_id: selection.requestedDeviceId,
       }),
     });
     await persist(draft.id, toDraftUpdate(job));

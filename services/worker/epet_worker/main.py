@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import logging
 from pathlib import Path
 import sys
@@ -14,6 +15,8 @@ from epet_api.dependencies import initialize_object_store, object_store, redis_c
 from epet_api.settings import settings
 
 from .package_builder import build_epet
+from .providers.capability_service import CapabilityService
+from .providers.contracts import ProviderError
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -33,7 +36,20 @@ def update(job_id: str, stage: str, progress: float) -> None:
         conn.commit()
 
 
-def process(job_id: str) -> None:
+def publish_capabilities(
+    service: CapabilityService, actual_plan=None, model_action=None
+) -> None:
+    payload = service.payload(actual_plan)
+    if model_action:
+        payload["model_action"] = model_action
+    redis_client().set(
+        "epet:worker:capabilities",
+        json.dumps(payload, ensure_ascii=False),
+        ex=30,
+    )
+
+
+def process(job_id: str, service: CapabilityService) -> None:
     with connection() as conn:
         job = conn.execute(
             """
@@ -57,7 +73,37 @@ def process(job_id: str) -> None:
         source.release_conn()
     update(job_id, "generating_portrait", 0.35)
     subject_kind = job["subject_kind"]
-    package = build_epet(photo, job["display_name"], subject_kind)
+    plan = service.plan(
+        job.get("provider_mode") or "configured",
+        job.get("requested_provider"),
+        job.get("requested_device_id"),
+    )
+    provider = service.registry.get(plan.provider_id)
+    with connection() as conn:
+        conn.execute(
+            """
+            UPDATE generation_jobs
+            SET actual_provider=%s, actual_device_id=%s, model_id=%s,
+              estimated_speed=%s, version=version+1, updated_at=now()
+            WHERE id=%s
+            """,
+            (
+                plan.provider_id,
+                plan.device_id,
+                plan.model_id,
+                plan.estimated_speed,
+                job_id,
+            ),
+        )
+        conn.commit()
+    publish_capabilities(service, plan)
+    package = build_epet(
+        photo,
+        job["display_name"],
+        subject_kind,
+        provider=provider,
+        plan=plan,
+    )
     update(job_id, "generating_actions", 0.6)
     artifact_key = f"artifacts/{job_id}/character.epet"
     object_store().put_object(
@@ -86,31 +132,78 @@ def process(job_id: str) -> None:
 
 def fail(job_id: str, error: Exception) -> None:
     LOG.exception("generation failed: %s", job_id)
+    provider_error = error if isinstance(error, ProviderError) else None
     with connection() as conn:
         conn.execute(
             """
             UPDATE generation_jobs
-            SET stage='failed', retryable=TRUE, error_code='MOCK_WORKER_FAILED',
+            SET stage='failed', retryable=%s, error_code=%s,
               error_params=%s, version=version+1, updated_at=now()
             WHERE id=%s
             """,
-            (Jsonb({"message": str(error)[:200]}), job_id),
+            (
+                provider_error.retryable if provider_error else True,
+                provider_error.code if provider_error else "MOCK_WORKER_FAILED",
+                Jsonb(
+                    provider_error.to_dict()
+                    if provider_error
+                    else {"message": str(error)[:200]}
+                ),
+                job_id,
+            ),
         )
         conn.commit()
+
+
+def process_model_command(raw: str, service: CapabilityService) -> None:
+    command = json.loads(raw)
+    model_id = command["model_id"]
+    action = command["action"]
+    try:
+        if action == "download":
+            status = service.models.download(model_id)
+        elif action == "remove":
+            service.models.remove(model_id)
+            status = service.models.status(model_id)
+        else:
+            raise ProviderError("MODEL_ACTION_INVALID", f"Unknown action {action}")
+        service.refresh_models()
+        publish_capabilities(
+            service,
+            model_action={"action": action, "model_id": model_id, "status": "completed", "model": status},
+        )
+    except ProviderError as error:
+        publish_capabilities(
+            service,
+            model_action={"action": action, "model_id": model_id, "status": "failed", "error": error.to_dict()},
+        )
+        LOG.warning("model action failed: %s", error)
 
 
 def run() -> None:
     initialize_database()
     initialize_object_store()
     redis = redis_client()
-    LOG.info("Mock Worker started; waiting on epet:generation:queue")
+    capability_service = CapabilityService()
+    publish_capabilities(capability_service)
+    LOG.info("Generation Worker started; waiting on epet:generation:queue")
     while True:
-        item = redis.blpop("epet:generation:queue", timeout=5)
+        item = redis.blpop(
+            ["epet:generation:queue", "epet:model:commands"], timeout=5
+        )
         if not item:
+            publish_capabilities(capability_service)
             continue
-        _, job_id = item
+        queue, value = item
+        if queue == "epet:model:commands":
+            try:
+                process_model_command(value, capability_service)
+            except Exception:
+                LOG.exception("invalid model command ignored")
+            continue
+        job_id = value
         try:
-            process(job_id)
+            process(job_id, capability_service)
         except Exception as error:
             fail(job_id, error)
             time.sleep(0.2)

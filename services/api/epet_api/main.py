@@ -55,6 +55,15 @@ def generation_snapshot(row: dict) -> dict:
         "stage": row["stage"],
         "retryable": row["retryable"],
         "progress": row["progress"],
+        "provider": {
+            "mode": row.get("provider_mode") or "configured",
+            "requested": row.get("requested_provider"),
+            "device_requested": row.get("requested_device_id"),
+            "actual": row.get("actual_provider"),
+            "device_actual": row.get("actual_device_id"),
+            "model_id": row.get("model_id"),
+            "estimated_speed": row.get("estimated_speed"),
+        },
         "error": error,
         "created_at": iso(row["created_at"]),
         "updated_at": iso(row["updated_at"]),
@@ -107,6 +116,48 @@ def health() -> dict:
     redis_client().ping()
     object_store().bucket_exists(settings.object_bucket)
     return {"status": "ok"}
+
+
+@app.get("/v1/capabilities")
+def get_capabilities() -> dict:
+    raw = redis_client().get("epet:worker:capabilities")
+    if not raw:
+        return {
+            "schema_version": 1,
+            "worker_online": False,
+            "hardware": None,
+            "providers": [],
+            "automatic_plan": None,
+            "configured_provider": None,
+            "actual_plan": None,
+            "models": [],
+            "unavailable_reason": "Worker 尚未启动或尚未完成硬件探测。",
+        }
+    value = json.loads(raw)
+    value["worker_online"] = True
+    return value
+
+
+@app.post("/v1/models/{model_id}/download", status_code=202)
+def download_model(model_id: str) -> dict:
+    if not model_id or len(model_id) > 128:
+        raise problem(400, "MODEL_ID_INVALID", "Invalid model identifier")
+    redis_client().rpush(
+        "epet:model:commands",
+        json.dumps({"action": "download", "model_id": model_id}),
+    )
+    return {"model_id": model_id, "status": "queued", "action": "download"}
+
+
+@app.delete("/v1/models/{model_id}", status_code=202)
+def remove_model(model_id: str) -> dict:
+    if not model_id or len(model_id) > 128:
+        raise problem(400, "MODEL_ID_INVALID", "Invalid model identifier")
+    redis_client().rpush(
+        "epet:model:commands",
+        json.dumps({"action": "remove", "model_id": model_id}),
+    )
+    return {"model_id": model_id, "status": "queued", "action": "remove"}
 
 
 @app.post("/v1/uploads", status_code=201)
@@ -238,8 +289,9 @@ def create_generation(
             """
             INSERT INTO generation_jobs (
               id, display_name, primary_upload_id, additional_upload_ids,
-              style_id, species, subject_kind, stage, progress
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'created', 0)
+              style_id, species, subject_kind, provider_mode, requested_provider,
+              requested_device_id, stage, progress
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'created', 0)
             RETURNING *
             """,
             (
@@ -250,6 +302,9 @@ def create_generation(
                 body.style_id,
                 body.species,
                 body.resolved_subject_kind(),
+                body.provider_mode,
+                body.requested_provider,
+                body.requested_device_id,
             ),
         ).fetchone()
         conn.commit()

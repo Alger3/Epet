@@ -1263,6 +1263,8 @@ interactive / click_through
 
 #### 步骤 5.5：本地多硬件生成 Provider
 
+> 状态：In progress（2026-07-28）。基础层已交付：核心 Provider 数据契约、`ProviderRegistry`、保持黄金包不变的 `MockProvider`、容错 `HardwareProbe`、确定性 `HardwarePlanner`、版本化模型清单/校验缓存/操作队列、FastAPI 能力与模型接口、任务实际 Provider 字段，以及桌面 CPU/GPU、模型状态、速度、不可用原因和自动/手动入口。真实 OpenVINO/CUDA/CPU 推理适配器、小模型编译探针、显存约束和跨硬件实机证据仍未完成，因此 UI 不会把这些路径标记为可用，默认开发配置继续显式使用 `mock`。
+
 要做什么：
 
 - 在步骤 5.4 动画基线通过后，将 Worker 的标准立绘/部件生成引擎从任务、存储、动画和 `.epet` 打包逻辑中解耦，支持按硬件选择实现。
@@ -1291,12 +1293,12 @@ interactive / click_through
 
 实施顺序：
 
-1. 冻结 `GeneratorProvider`、`ProviderCapability`、`HardwareSnapshot`、`GenerationPlan`、错误码和 Provider 选择规则，先用纯数据单元测试覆盖，不加载真实模型。
-2. 在 `services/worker/epet_worker/providers/` 实现 `base`、`registry`、`hardware_probe`、`planner` 和现有 Mock 适配器；保证 Mock 只能由开发配置显式选择。
-3. 实现 Windows 硬件探测：CUDA 可用性与显存、OpenVINO `available_devices`/设备属性、CPU/系统内存、驱动和运行时版本；无法读取的字段降级为 `unknown`，不能导致 Worker 崩溃。
-4. 实现 `auto`/手动选择、候选评分、探针、回退链和稳定错误；加入 Intel+NVIDIA 双显卡、仅 Intel 集显、CPU-only、驱动损坏、显存不足等夹具测试。
-5. 扩展 Worker 能力快照和 FastAPI 只读能力接口，桌面创建页展示检测设备、最终 Provider、模型状态、预计速度、选择原因及手动覆盖入口。
-6. 实现版本化模型清单、按需下载、临时文件、SHA-256 校验、原子提交、缓存隔离、清理和重新下载；先使用小型假模型验证失败恢复，不直接下载完整扩散模型。
+1. [x] 冻结 `GeneratorProvider`、`ProviderCapability`、`HardwareSnapshot`、`GenerationPlan`、错误码和 Provider 选择规则，先用纯数据单元测试覆盖，不加载真实模型。
+2. [x] 在 `services/worker/epet_worker/providers/` 实现 `base`、`registry`、`hardware_probe`、`planner` 和现有 Mock 适配器；保证 Mock 只能由开发配置显式选择。
+3. [ ] 实现 Windows 硬件探测：基础 CPU/GPU/内存与 CUDA/OpenVINO 运行时发现已完成；CUDA 显存、驱动/运行时版本、OpenVINO 设备属性和小模型探针仍待补齐。无法读取的字段已降级为 `unknown`，不会导致 Worker 崩溃。
+4. [ ] 实现 `auto`/手动选择、候选评分、探针、回退链和稳定错误；确定性优先级、手动不静默回退与基础夹具已完成，显存评分、运行探针和完整硬件夹具矩阵仍待补齐。
+5. [x] 扩展 Worker 能力快照和 FastAPI 只读能力接口，桌面创建页展示检测设备、最终 Provider、模型状态、预计速度、选择原因及手动覆盖入口。
+6. [ ] 实现版本化模型清单、按需下载、临时文件、SHA-256 校验、原子提交、缓存隔离、清理和重新下载；基础管理器、命令队列和损坏缓存测试已完成，真实模型 URL、许可与恢复集成测试仍待配置。
 7. 在 Intel Arc 140V 上完成 OpenVINO GPU Spike：导出并加载 SD1.5 FP16，验证 512×512、batch 1、img2img 的加载、峰值内存、单次耗时、取消和重复执行。
 8. 接入真实 `OpenVinoGpuProvider`，先只输出标准 Q 版立绘和质量信息；通过人工确认 Gate 后再进入现有部件拆分、68 帧 Atlas、`.epet` 打包、下载、安装和激活链路。
 9. 复用同一工作流语义实现 `CudaProvider`，并实现 `OpenVinoCpuProvider` 的慢速保底；分别保留独立模型格式和实机证据，不以 140V 的结果替代其他硬件验收。

@@ -205,6 +205,45 @@ paths:
           $ref: '#/components/responses/Problem'
         '429':
           $ref: '#/components/responses/Problem'
+  /v1/capabilities:
+    get:
+      tags: [Generations]
+      operationId: getGenerationCapabilities
+      responses:
+        '200':
+          description: Best-effort local hardware, Provider and model snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationCapabilities'
+  /v1/models/{model_id}/download:
+    post:
+      tags: [Generations]
+      operationId: downloadGenerationModel
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '202':
+          description: Model download command queued.
+  /v1/models/{model_id}:
+    delete:
+      tags: [Generations]
+      operationId: removeGenerationModel
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '202':
+          description: Model removal command queued.
   /v1/generations/{job_id}:
     get:
       tags: [Generations]
@@ -637,6 +676,16 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        provider_mode:
+          type: string
+          enum: [configured, auto, manual]
+          default: configured
+        requested_provider:
+          type: string
+          enum: [mock, cuda, openvino-gpu, openvino-cpu]
+        requested_device_id:
+          type: string
+          maxLength: 128
     GenerationSnapshot:
       type: object
       additionalProperties: false
@@ -656,6 +705,8 @@ components:
           type: number
           minimum: 0
           maximum: 1
+        provider:
+          $ref: '#/components/schemas/GenerationProviderExecution'
         portrait_preview_url:
           type: string
           format: uri
@@ -672,6 +723,118 @@ components:
         updated_at:
           type: string
           format: date-time
+    GenerationProviderExecution:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [configured, auto, manual]
+        requested:
+          type: [string, 'null']
+        device_requested:
+          type: [string, 'null']
+        actual:
+          type: [string, 'null']
+        device_actual:
+          type: [string, 'null']
+        model_id:
+          type: [string, 'null']
+        estimated_speed:
+          type: [string, 'null']
+    GenerationCapabilities:
+      type: object
+      additionalProperties: true
+      required: [schema_version, worker_online, providers, models]
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        worker_online:
+          type: boolean
+        configured_provider:
+          type: [string, 'null']
+        hardware:
+          oneOf:
+            - $ref: '#/components/schemas/HardwareSnapshot'
+            - type: 'null'
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCapability'
+        models:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    HardwareSnapshot:
+      type: object
+      additionalProperties: true
+      required: [platform, computer_model, cpu, gpus, system_memory_mb, probed_at]
+      properties:
+        platform:
+          type: string
+        computer_model:
+          type: string
+        cpu:
+          $ref: '#/components/schemas/HardwareDevice'
+        gpus:
+          type: array
+          items:
+            $ref: '#/components/schemas/HardwareDevice'
+        system_memory_mb:
+          oneOf:
+            - type: integer
+            - type: string
+              const: unknown
+        probed_at:
+          type: string
+          format: date-time
+    HardwareDevice:
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, vendor, memory_mb, runtime, available]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [cpu, gpu]
+        name:
+          type: string
+        vendor:
+          type: string
+        memory_mb:
+          oneOf:
+            - type: integer
+            - type: string
+              const: unknown
+        runtime:
+          type: string
+        available:
+          type: boolean
+        unavailable_reason:
+          type: [string, 'null']
+    ProviderCapability:
+      type: object
+      additionalProperties: true
+      required: [provider_id, display_name, available, model_downloaded, estimated_speed]
+      properties:
+        provider_id:
+          type: string
+          enum: [mock, cuda, openvino-gpu, openvino-cpu]
+        display_name:
+          type: string
+        available:
+          type: boolean
+        model_downloaded:
+          type: boolean
+        estimated_speed:
+          type: string
+          enum: [fast, medium, slow, unknown]
+        unavailable_reason:
+          type: [string, 'null']
     GenerationStage:
       type: string
       enum: [created, validating, generating_portrait, awaiting_portrait_confirmation, generating_actions, postprocessing, quality_check, packaging, ready, cancel_requested, failed, canceled, expired]

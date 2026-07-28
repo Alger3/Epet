@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { SubjectKind } from "../shared/characters";
 import {
+  getGenerationCapabilities,
+  requestModelDownload,
+  type GenerationCapabilities,
+  type ProviderSelection,
+} from "../shared/generation-service";
+import {
   cropFromControls,
   preparePhoto,
   type CreationDraft,
@@ -47,7 +53,31 @@ export function CreateCharacterPanel() {
   const [horizontal, setHorizontal] = useState(50);
   const [vertical, setVertical] = useState(50);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<GenerationCapabilities | null>(null);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+  const [capabilityRefresh, setCapabilityRefresh] = useState(0);
+  const [providerSelection, setProviderSelection] = useState<ProviderSelection>({
+    providerMode: "configured",
+  });
   const draft = workshop.selectedDraft;
+
+  useEffect(() => {
+    if (!draft) return;
+    let active = true;
+    void getGenerationCapabilities()
+      .then((value) => {
+        if (active) {
+          setCapabilities(value);
+          setCapabilityError(null);
+        }
+      })
+      .catch((reason) => {
+        if (active) setCapabilityError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [draft?.id, capabilityRefresh]);
 
   useEffect(
     () => () => {
@@ -281,11 +311,19 @@ export function CreateCharacterPanel() {
         )}
       </div>
 
+      <ProviderPanel
+        capabilities={capabilities}
+        error={capabilityError}
+        selection={providerSelection}
+        onChange={setProviderSelection}
+        onRefresh={() => setCapabilityRefresh((value) => value + 1)}
+      />
+
       <div className="draft-actions">
         <button
           className="primary-button"
           disabled={!draft.photos.some((photo) => photo.role === "primary") || workshop.busy}
-          onClick={() => void workshop.startGeneration(draft.id)}
+          onClick={() => void workshop.startGeneration(draft.id, providerSelection)}
           type="button"
         >
           {draft.status === "service_unavailable" ? "重新检查生成服务" : "确认照片并开始生成"}
@@ -311,6 +349,166 @@ export function CreateCharacterPanel() {
           删除本地草稿
         </button>
       </div>
+    </section>
+  );
+}
+
+function ProviderPanel({
+  capabilities,
+  error,
+  selection,
+  onChange,
+  onRefresh,
+}: {
+  capabilities: GenerationCapabilities | null;
+  error: string | null;
+  selection: ProviderSelection;
+  onChange(value: ProviderSelection): void;
+  onRefresh(): void;
+}) {
+  const selectedProvider =
+    selection.requestedProvider ??
+    (selection.providerMode === "configured" ? capabilities?.configured_provider : undefined);
+  const selectedCapability = capabilities?.providers.find(
+    (provider) => provider.provider_id === selectedProvider,
+  );
+  const selectedModel = capabilities?.models.find(
+    (model) => model.model_id === selectedCapability?.model_id,
+  );
+  const speedLabel = (speed?: string) =>
+    ({ fast: "较快", medium: "中等", slow: "较慢", unknown: "未知" })[speed ?? "unknown"];
+
+  return (
+    <section className="provider-panel" aria-labelledby="provider-title">
+      <div className="provider-heading">
+        <div>
+          <p className="eyebrow">本机生成能力</p>
+          <h3 id="provider-title">设备与运行方式</h3>
+        </div>
+        <button
+          className="secondary-button compact-button"
+          onClick={onRefresh}
+          type="button"
+        >
+          重新检测
+        </button>
+      </div>
+      {error ? <p className="availability-note">{error}</p> : null}
+      {!capabilities ? (
+        <p>正在读取 Worker 的硬件探测结果…</p>
+      ) : !capabilities.worker_online || !capabilities.hardware ? (
+        <p className="availability-note">
+          {capabilities.unavailable_reason ?? "Worker 不在线，无法读取硬件能力。"}
+        </p>
+      ) : (
+        <>
+          <div className="hardware-summary">
+            <span><strong>电脑</strong>{capabilities.hardware.computer_model}</span>
+            <span><strong>CPU</strong>{capabilities.hardware.cpu.name}</span>
+            <span>
+              <strong>GPU</strong>
+              {capabilities.hardware.gpus.length
+                ? capabilities.hardware.gpus.map((gpu) => gpu.name).join(" / ")
+                : "unknown"}
+            </span>
+          </div>
+          <div className="provider-mode" role="group" aria-label="Provider 选择方式">
+            <button
+              aria-pressed={selection.providerMode === "auto"}
+              onClick={() => onChange({ providerMode: "auto" })}
+              type="button"
+            >
+              自动选择
+            </button>
+            <button
+              aria-pressed={selection.providerMode !== "auto"}
+              onClick={() =>
+                onChange({
+                  providerMode: "manual",
+                  requestedProvider:
+                    (capabilities.configured_provider as ProviderSelection["requestedProvider"]) ??
+                    "mock",
+                })
+              }
+              type="button"
+            >
+              手动选择
+            </button>
+          </div>
+          {selection.providerMode === "auto" ? (
+            <div className="provider-result">
+              <strong>自动选择结果</strong>
+              <span>
+                {capabilities.automatic_plan?.provider_id ??
+                  (capabilities.automatic_plan?.error
+                    ? "暂无可用的真实推理 Provider"
+                    : "等待 Planner 返回结果")}
+              </span>
+            </div>
+          ) : (
+            <label className="field-stack">
+              <span>实际 Provider</span>
+              <select
+                onChange={(event) =>
+                  onChange({
+                    providerMode: "manual",
+                    requestedProvider: event.target
+                      .value as ProviderSelection["requestedProvider"],
+                  })
+                }
+                value={selectedProvider ?? "mock"}
+              >
+                {capabilities.providers.map((provider) => (
+                  <option
+                    disabled={!provider.available}
+                    key={provider.provider_id}
+                    value={provider.provider_id}
+                  >
+                    {provider.display_name}
+                    {!provider.available ? "（不可用）" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="provider-result">
+            <span>
+              模型：
+              {selectedCapability?.model_downloaded ? "已下载 / 内置" : "未下载"}
+            </span>
+            <span>预计速度：{speedLabel(selectedCapability?.estimated_speed)}</span>
+            {selectedCapability?.provider_id === "openvino-cpu" ? (
+              <strong className="cpu-warning">CPU 可以运行，但生成时间可能明显更长。</strong>
+            ) : null}
+            {selectedCapability?.unavailable_reason ? (
+              <small>不可用原因：{selectedCapability.unavailable_reason}</small>
+            ) : null}
+            {selectedCapability?.model_id &&
+            !selectedCapability.model_downloaded &&
+            selectedModel?.download_url ? (
+              <button
+                className="secondary-button compact-button"
+                onClick={() => {
+                  void requestModelDownload(selectedCapability.model_id!).then(() => {
+                    window.setTimeout(onRefresh, 800);
+                  });
+                }}
+                type="button"
+              >
+                下载所需模型
+              </button>
+            ) : selectedCapability?.model_id && !selectedCapability.model_downloaded ? (
+              <small>模型下载源尚未配置；当前不能把该 Provider 标记为可用。</small>
+            ) : null}
+            {capabilities.actual_plan ? (
+              <small>
+                最近实际运行：{capabilities.actual_plan.provider_id} /{" "}
+                {capabilities.actual_plan.device_id}
+              </small>
+            ) : null}
+          </div>
+        </>
+      )}
     </section>
   );
 }

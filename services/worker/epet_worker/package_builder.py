@@ -3,7 +3,10 @@ from io import BytesIO
 import json
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
-from .animation_renderer import CANVAS, render_animation
+from .animation_renderer import CANVAS
+from .providers.base import GenerationProvider
+from .providers.contracts import GenerationPlan, GenerationRequest
+from .providers.mock_provider import MockProvider
 
 
 FIXED_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
@@ -16,10 +19,23 @@ def canonical_json(value: object) -> bytes:
 
 
 def build_epet(
-    photo: bytes, display_name: str, subject_kind: str = "pet_cat"
+    photo: bytes,
+    display_name: str,
+    subject_kind: str = "pet_cat",
+    *,
+    provider: GenerationProvider | None = None,
+    plan: GenerationPlan | None = None,
 ) -> bytes:
     subject_kind = "human_avatar" if subject_kind == "human_avatar" else "pet_cat"
-    rendered = render_animation(photo, subject_kind)
+    result = (provider or MockProvider()).generate(
+        GenerationRequest(
+            photo=photo,
+            display_name=display_name,
+            subject_kind=subject_kind,
+        ),
+        plan,
+    )
+    rendered = result.payload
     safe_name = display_name.strip()[:64] or "自定义桌宠"
     identity_hash = sha256(
         photo + b"\0" + safe_name.encode("utf-8") + b"\0" + subject_kind.encode()

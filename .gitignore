@@ -29,6 +29,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+services/worker/.model-cache/
 
 # Local data and generated pet packages
 *.db

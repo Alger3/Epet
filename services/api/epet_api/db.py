@@ -38,12 +38,26 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
   artifact_key TEXT,
   artifact_sha256 TEXT,
   artifact_size BIGINT,
+  provider_mode TEXT NOT NULL DEFAULT 'configured',
+  requested_provider TEXT,
+  requested_device_id TEXT,
+  actual_provider TEXT,
+  actual_device_id TEXT,
+  model_id TEXT,
+  estimated_speed TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE generation_jobs
   ADD COLUMN IF NOT EXISTS subject_kind TEXT NOT NULL DEFAULT 'pet_cat';
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS provider_mode TEXT NOT NULL DEFAULT 'configured';
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS requested_provider TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS requested_device_id TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS actual_provider TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS actual_device_id TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS model_id TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS estimated_speed TEXT;
 
 CREATE TABLE IF NOT EXISTS deletions (
   id TEXT PRIMARY KEY,
