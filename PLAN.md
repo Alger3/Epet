@@ -1268,12 +1268,19 @@ interactive / click_through
 - 在步骤 5.4 动画基线通过后，将 Worker 的标准立绘/部件生成引擎从任务、存储、动画和 `.epet` 打包逻辑中解耦，支持按硬件选择实现。
 - 首批支持 `mock`、`openvino-gpu`、`openvino-cpu` 和 `cuda`；AMD/DirectML 作为后续兼容项，不在首批支持范围内。
 - 本地生成和云端 Worker 使用相同 Provider 契约，API、桌面任务状态和角色包格式不感知底层推理框架。
+- 内置确定性的 `HardwarePlanner`，在每次 Worker 启动和生成任务执行前根据真实能力而非型号字符串生成运行计划；它不是 LLM Agent，不访问网络，也不上传硬件信息。
 
 怎么做：
 
 - 定义统一 `GeneratorProvider`，输入包含已清理照片、主体类型、风格、工作流版本和种子；输出统一为标准立绘、可选部件 Mask 和质量信息，再由拆分/绑定步骤适配为阶段 5.4 的 `LayerBundle`。Provider 不直接生成 Atlas。
-- `auto` 模式按“可用 CUDA → Intel OpenVINO GPU → OpenVINO CPU”选择；允许通过环境变量显式指定 Provider 和设备。显式配置不可用时返回稳定错误，不得静默伪装成 Mock 成功。
+- 将硬件决策拆为 `HardwareProbe`、`ProviderRegistry`、`HardwarePlanner` 和 `GenerationPlan`：Probe 枚举 CUDA、OpenVINO `GPU.N`/CPU、驱动、精度能力、显存/共享内存、系统内存和模型可用性；Registry 声明每个 Provider 的需求与支持模型；Planner 只使用结构化快照排序并输出可审计计划。
+- `GenerationPlan` 至少记录 `provider`、`device_id`、脱敏设备名称、模型变体、精度、画布、batch、估算内存、选择原因和有序回退链；任务开始后将实际执行结果、失败阶段和回退原因写回，但不记录序列号、完整本地路径或其他高基数硬件标识。
+- `auto` 模式按“CUDA 可用且显存/编译测试通过 → Intel OpenVINO GPU 可用且编译测试通过 → OpenVINO CPU 内存满足要求”选择；型号只用于说明和缓存隔离，不能代替 `available_devices`、能力查询、小模型编译和低成本推理探针。
+- 提供 `auto` 和显式手动模式。自动模式只允许沿计划中的安全回退链切换，并在 UI 中展示实际 Provider；手动指定 Provider/设备不可用时返回稳定错误，不得静默切换，也不得伪装成 Mock 成功。
+- 多 GPU 电脑不得假设 `GPU.0` 永远是性能最高设备；Planner 枚举所有候选并优先满足模型、精度和内存约束的设备。Intel 集显与独显使用 OpenVINO 设备 ID，NVIDIA 使用 CUDA 设备 ID；首版不聚合多块 GPU。
+- 硬件能力快照分为“发现”“可编译”“可运行”三级。启动时完成轻量发现；首次选择某 Provider 时执行小模型编译/低成本推理探针；真实模型加载失败、显存不足或驱动错误时按错误类别决定是否允许自动回退。
 - NVIDIA 使用 PyTorch/Safetensors 模型缓存；Intel GPU 与 CPU 使用 OpenVINO IR 缓存。不同格式共享同一逻辑模型版本和许可清单，但不要求用户下载所有硬件格式。
+- OpenVINO IR 可以跨受支持 Intel 设备复用，编译缓存不能跨型号直接复制；缓存键至少包含模型 SHA-256、Provider、设备架构/类别、精度、OpenVINO/CUDA 版本和驱动版本。缓存不匹配时重新编译，不删除原始模型。
 - 模型按需下载到独立缓存目录；清单记录模型 ID、修订、SHA-256、许可、Provider、精度和导出参数。模型文件不进入桌面安装包或 Git 仓库。
 - 第一条真实本地路线以 Intel Arc 140V 8GB 为验证机：SD1.5 FP16、OpenVINO `GPU`、512×512、batch 1、img2img，并使用经许可审查的猫咪/Q 版人物风格 LoRA。LoRA 在导出 OpenVINO IR 前合并或固化。
 - CUDA 路线复用同一 SD1.5 工作流语义，并单独验证 IP-Adapter；OpenVINO 的 IP-Adapter 兼容性先做 Spike，未验证前不把身份一致性增强写成已交付能力。
@@ -1282,14 +1289,30 @@ interactive / click_through
 - PostgreSQL 任务记录实际 Provider、设备类别、模型版本、工作流版本、推理耗时和回退原因，但不得记录完整本地路径、照片内容或高基数硬件标识。
 - 本地模式只绑定回环地址；云端模式继续使用现有鉴权、队列、对象存储和隔离边界。部署位置变化不得改变 API 契约或 `.epet` 校验规则。
 
+实施顺序：
+
+1. 冻结 `GeneratorProvider`、`ProviderCapability`、`HardwareSnapshot`、`GenerationPlan`、错误码和 Provider 选择规则，先用纯数据单元测试覆盖，不加载真实模型。
+2. 在 `services/worker/epet_worker/providers/` 实现 `base`、`registry`、`hardware_probe`、`planner` 和现有 Mock 适配器；保证 Mock 只能由开发配置显式选择。
+3. 实现 Windows 硬件探测：CUDA 可用性与显存、OpenVINO `available_devices`/设备属性、CPU/系统内存、驱动和运行时版本；无法读取的字段降级为 `unknown`，不能导致 Worker 崩溃。
+4. 实现 `auto`/手动选择、候选评分、探针、回退链和稳定错误；加入 Intel+NVIDIA 双显卡、仅 Intel 集显、CPU-only、驱动损坏、显存不足等夹具测试。
+5. 扩展 Worker 能力快照和 FastAPI 只读能力接口，桌面创建页展示检测设备、最终 Provider、模型状态、预计速度、选择原因及手动覆盖入口。
+6. 实现版本化模型清单、按需下载、临时文件、SHA-256 校验、原子提交、缓存隔离、清理和重新下载；先使用小型假模型验证失败恢复，不直接下载完整扩散模型。
+7. 在 Intel Arc 140V 上完成 OpenVINO GPU Spike：导出并加载 SD1.5 FP16，验证 512×512、batch 1、img2img 的加载、峰值内存、单次耗时、取消和重复执行。
+8. 接入真实 `OpenVinoGpuProvider`，先只输出标准 Q 版立绘和质量信息；通过人工确认 Gate 后再进入现有部件拆分、68 帧 Atlas、`.epet` 打包、下载、安装和激活链路。
+9. 复用同一工作流语义实现 `CudaProvider`，并实现 `OpenVinoCpuProvider` 的慢速保底；分别保留独立模型格式和实机证据，不以 140V 的结果替代其他硬件验收。
+10. 完成跨硬件矩阵、长任务取消、Worker 重启、缓存损坏、回退可观测性和隐私检查；只有有实机证据的路径才在 UI 标记为“正式支持”。
+
 验收标准：
 
 - Intel Arc 验证机能自动选择 `openvino-gpu`，完成照片 → Q 版立绘 → `.epet` → 下载校验 → 安装激活的真实闭环。
 - NVIDIA 验证机能自动选择 `cuda`；没有可用 GPU 时选择 `openvino-cpu` 并提示预计较慢，不阻塞既有桌宠离线运行。
+- 同一台 Intel+NVIDIA 双显卡电脑能列出全部候选，`auto` 选择通过能力、显存和探针验证的方案；手动指定失败时明确报错，不发生未告知回退。
+- `GenerationPlan` 对相同能力快照、模型清单和用户配置给出确定性相同结果，并能解释选择、排除和回退原因。
 - 相同 Provider、模型、工作流、输入和种子可复现相同生成配置；最终包继续满足现有 `.epet` 安全校验。
 - 缺少模型、驱动不兼容、显存/共享内存不足和推理失败分别返回稳定错误码，且不会退回 Mock 并声称 AI 生成成功。
 - 模型缓存可按清单校验、清理和重新下载；切换 Provider 不要求迁移或破坏已安装角色。
 - CUDA、Intel GPU 和 CPU 三条路径各有能力检测测试；未完成实机证据的硬件路径不得标记为正式支持。
+- 能力接口和日志不包含照片、完整本地路径、设备序列号或其他不必要的唯一硬件标识；关闭生成服务后不影响已安装 `.epet` 的离线运行。
 
 ### 阶段 6A：猫咪 AI 资产流水线
 
