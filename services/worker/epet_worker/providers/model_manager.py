@@ -41,7 +41,11 @@ class ModelManager:
         downloaded = spec.built_in or (
             path is not None
             and path.is_file()
-            and (spec.sha256 is None or self._hash(path) == spec.sha256)
+            and (
+                self._verify_directory_manifest(path)
+                if path.name == ".epet-model.json"
+                else spec.sha256 is None or self._hash(path) == spec.sha256
+            )
         )
         return {
             **asdict(spec),
@@ -95,7 +99,17 @@ class ModelManager:
             raise ProviderError("MODEL_BUILT_IN", "Built-in models cannot be removed")
         path = self.model_path(spec)
         if path:
-            path.unlink(missing_ok=True)
+            if path.name == ".epet-model.json" and path.parent.is_dir():
+                resolved_root = self.cache_root.resolve()
+                resolved_target = path.parent.resolve()
+                if resolved_target == resolved_root or resolved_root not in resolved_target.parents:
+                    raise ProviderError(
+                        "MODEL_CACHE_PATH_INVALID",
+                        "Refusing to remove a model outside its cache root",
+                    )
+                shutil.rmtree(resolved_target)
+            else:
+                path.unlink(missing_ok=True)
 
     def compiled_cache_dir(self, model_id: str, device_id: str) -> Path:
         spec = self._spec(model_id)
@@ -118,3 +132,24 @@ class ModelManager:
             while chunk := source.read(1024 * 1024):
                 digest.update(chunk)
         return digest.hexdigest()
+
+    def _verify_directory_manifest(self, path: Path) -> bool:
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            files = manifest["files"]
+            if not files:
+                return False
+            for declared in files:
+                relative = Path(declared["path"])
+                if relative.is_absolute() or ".." in relative.parts:
+                    return False
+                target = path.parent / relative
+                if (
+                    not target.is_file()
+                    or target.stat().st_size != declared["size"]
+                    or self._hash(target) != declared["sha256"]
+                ):
+                    return False
+            return True
+        except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError):
+            return False

@@ -5,6 +5,7 @@ from .contracts import (
     HardwareSnapshot,
     ProviderCapability,
     ProviderError,
+    RuntimeProbe,
 )
 
 
@@ -89,6 +90,7 @@ def build_capabilities(
     model_statuses: list[dict],
     openvino_cpu: bool,
     installed_provider_ids: tuple[str, ...] = ("mock",),
+    openvino_probe: RuntimeProbe | None = None,
 ) -> list[ProviderCapability]:
     status_by_provider = {
         status["provider_id"]: status for status in model_statuses
@@ -106,6 +108,8 @@ def build_capabilities(
         devices: tuple[str, ...],
         speed: str,
         runtime_available: bool,
+        runtime_probe: RuntimeProbe | None = None,
+        detected: bool | None = None,
     ) -> ProviderCapability:
         model = status_by_provider.get(provider_id)
         downloaded = bool(model and model["downloaded"])
@@ -126,17 +130,59 @@ def build_capabilities(
             model_downloaded=downloaded,
             estimated_speed=speed,
             unavailable_reason=reason,
+            detected=runtime_available if detected is None else detected,
+            runtime_available=bool(
+                runtime_probe.runtime_available if runtime_probe else runtime_available
+            ),
+            compile_verified=bool(runtime_probe and runtime_probe.compile_verified),
+            inference_verified=bool(runtime_probe and runtime_probe.inference_verified),
+            runtime_version=(
+                runtime_probe.runtime_version if runtime_probe else "unknown"
+            ),
+            full_device_name=(
+                runtime_probe.full_device_name if runtime_probe else "unknown"
+            ),
+            driver_version=(
+                runtime_probe.driver_version if runtime_probe else "unknown"
+            ),
+            device_architecture=(
+                runtime_probe.device_architecture if runtime_probe else "unknown"
+            ),
+            supported_precisions=(
+                runtime_probe.supported_precisions if runtime_probe else ()
+            ),
+            compile_time_ms=(
+                runtime_probe.compile_time_ms if runtime_probe else "unknown"
+            ),
+            inference_time_ms=(
+                runtime_probe.inference_time_ms if runtime_probe else "unknown"
+            ),
         )
 
     mock = status_by_provider.get("mock")
     return [
-        real_capability("cuda", "NVIDIA CUDA", cuda_devices, "fast", bool(cuda_devices)),
+        real_capability(
+            "cuda",
+            "NVIDIA CUDA",
+            cuda_devices,
+            "fast",
+            bool(cuda_devices),
+            detected=any(device.vendor == "nvidia" for device in snapshot.gpus),
+        ),
         real_capability(
             "openvino-gpu",
             "Intel GPU / OpenVINO",
             openvino_devices,
             "fast",
-            bool(openvino_devices),
+            bool(
+                openvino_devices
+                and openvino_probe
+                and openvino_probe.runtime_available
+                and openvino_probe.compile_verified
+                and openvino_probe.inference_verified
+            ),
+            openvino_probe,
+            detected=any(device.vendor == "intel" for device in snapshot.gpus),
         ),
         real_capability(
             "openvino-cpu",
@@ -144,6 +190,7 @@ def build_capabilities(
             ("cpu:0",) if openvino_cpu else (),
             "slow",
             openvino_cpu,
+            detected=True,
         ),
         ProviderCapability(
             provider_id="mock",
@@ -154,5 +201,11 @@ def build_capabilities(
             model_downloaded=True,
             estimated_speed="fast",
             development_only=True,
+            detected=True,
+            runtime_available=True,
+            compile_verified=True,
+            inference_verified=True,
+            runtime_version="built-in",
+            full_device_name=snapshot.cpu.name,
         ),
     ]

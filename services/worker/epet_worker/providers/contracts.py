@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 
 UNKNOWN = "unknown"
@@ -18,6 +18,7 @@ class HardwareDevice:
     vendor: str = UNKNOWN
     memory_mb: int | Literal["unknown"] = UNKNOWN
     runtime: str = UNKNOWN
+    driver_version: str = UNKNOWN
     available: bool = False
     unavailable_reason: str | None = None
 
@@ -41,6 +42,29 @@ class HardwareSnapshot:
 
 
 @dataclass(frozen=True)
+class RuntimeProbe:
+    runtime_id: str
+    detected: bool = False
+    runtime_available: bool = False
+    compile_verified: bool = False
+    inference_verified: bool = False
+    runtime_version: str = UNKNOWN
+    available_devices: tuple[str, ...] = ()
+    target_device: str = UNKNOWN
+    full_device_name: str = UNKNOWN
+    driver_version: str = UNKNOWN
+    device_architecture: str = UNKNOWN
+    supported_precisions: tuple[str, ...] = ()
+    compile_time_ms: float | Literal["unknown"] = UNKNOWN
+    inference_time_ms: float | Literal["unknown"] = UNKNOWN
+    error_code: str | None = None
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ProviderCapability:
     provider_id: ProviderId
     display_name: str
@@ -52,6 +76,17 @@ class ProviderCapability:
     unavailable_reason: str | None = None
     supports_subjects: tuple[str, ...] = ("pet_cat", "human_avatar")
     development_only: bool = False
+    detected: bool = False
+    runtime_available: bool = False
+    compile_verified: bool = False
+    inference_verified: bool = False
+    runtime_version: str = UNKNOWN
+    full_device_name: str = UNKNOWN
+    driver_version: str = UNKNOWN
+    device_architecture: str = UNKNOWN
+    supported_precisions: tuple[str, ...] = ()
+    compile_time_ms: float | Literal["unknown"] = UNKNOWN
+    inference_time_ms: float | Literal["unknown"] = UNKNOWN
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,6 +101,12 @@ class GenerationRequest:
     provider_mode: str = "configured"
     requested_provider: str | None = None
     requested_device_id: str | None = None
+    seed: int | None = None
+    cancellation_check: Callable[[], bool] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)

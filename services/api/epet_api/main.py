@@ -64,6 +64,11 @@ def generation_snapshot(row: dict) -> dict:
             "model_id": row.get("model_id"),
             "estimated_speed": row.get("estimated_speed"),
         },
+        "portrait": {
+            "ready": bool(row.get("portrait_key")),
+            "confirmed": bool(row.get("portrait_confirmed")),
+            "metrics": row.get("portrait_metrics") or {},
+        },
         "error": error,
         "created_at": iso(row["created_at"]),
         "updated_at": iso(row["updated_at"]),
@@ -138,11 +143,21 @@ def get_capabilities() -> dict:
     return value
 
 
+@app.post("/v1/capabilities/probe", status_code=202)
+def probe_capabilities() -> dict:
+    redis_client().rpush("epet:capability:commands", "probe")
+    return {"status": "queued", "action": "probe"}
+
+
 @app.post("/v1/models/{model_id}/download", status_code=202)
 def download_model(model_id: str) -> dict:
     if not model_id or len(model_id) > 128:
         raise problem(400, "MODEL_ID_INVALID", "Invalid model identifier")
-    redis_client().rpush(
+    redis = redis_client()
+    lock_key = f"epet:model:action:{model_id}"
+    if not redis.set(lock_key, "download", nx=True, ex=2 * 60 * 60):
+        return {"model_id": model_id, "status": "already_queued", "action": "download"}
+    redis.rpush(
         "epet:model:commands",
         json.dumps({"action": "download", "model_id": model_id}),
     )
@@ -153,7 +168,11 @@ def download_model(model_id: str) -> dict:
 def remove_model(model_id: str) -> dict:
     if not model_id or len(model_id) > 128:
         raise problem(400, "MODEL_ID_INVALID", "Invalid model identifier")
-    redis_client().rpush(
+    redis = redis_client()
+    lock_key = f"epet:model:action:{model_id}"
+    if not redis.set(lock_key, "remove", nx=True, ex=2 * 60 * 60):
+        return {"model_id": model_id, "status": "already_queued", "action": "remove"}
+    redis.rpush(
         "epet:model:commands",
         json.dumps({"action": "remove", "model_id": model_id}),
     )
@@ -354,6 +373,119 @@ def get_artifact(job_id: str) -> dict:
     }
 
 
+@app.get("/v1/generations/{job_id}/portrait")
+def get_portrait(job_id: str) -> dict:
+    row = find_job(job_id)
+    if not row.get("portrait_key"):
+        raise problem(409, "PORTRAIT_NOT_READY", "Portrait preview is not ready")
+    return {
+        "preview_url": f"{settings.api_base_url}/v1/generations/{job_id}/portrait/content",
+        "size": row["portrait_size"],
+        "sha256": row["portrait_sha256"],
+        "metrics": row.get("portrait_metrics") or {},
+    }
+
+
+@app.get("/v1/generations/{job_id}/portrait/content")
+def download_portrait(job_id: str) -> StreamingResponse:
+    row = find_job(job_id)
+    if not row.get("portrait_key"):
+        raise problem(409, "PORTRAIT_NOT_READY", "Portrait preview is not ready")
+    source = object_store().get_object(settings.object_bucket, row["portrait_key"])
+
+    def chunks():
+        try:
+            while chunk := source.read(64 * 1024):
+                yield chunk
+        finally:
+            source.close()
+            source.release_conn()
+
+    return StreamingResponse(
+        chunks(),
+        media_type="image/png",
+        headers={"Content-Length": str(row["portrait_size"])},
+    )
+
+
+@app.post("/v1/generations/{job_id}/portrait/confirm")
+def confirm_portrait(job_id: str) -> dict:
+    with connection() as conn:
+        row = conn.execute(
+            """
+            UPDATE generation_jobs
+            SET stage='portrait_confirmed', portrait_confirmed=TRUE, progress=0.55,
+              version=version+1, updated_at=now()
+            WHERE id=%s AND stage='awaiting_portrait_confirmation'
+            RETURNING *
+            """,
+            (job_id,),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        current = find_job(job_id)
+        if current.get("portrait_confirmed"):
+            return generation_snapshot(current)
+        raise problem(409, "PORTRAIT_STATE_CONFLICT", "Portrait is not awaiting confirmation")
+    redis_client().rpush("epet:generation:queue", job_id)
+    return generation_snapshot(row)
+
+
+@app.post("/v1/generations/{job_id}/portrait/repackage")
+def repackage_confirmed_portrait(job_id: str) -> dict:
+    """Rebuild an artifact from the already approved portrait.
+
+    This is intentionally separate from portrait regeneration: no diffusion
+    inference runs and the approved identity image remains unchanged.
+    """
+    with connection() as conn:
+        row = conn.execute(
+            """
+            UPDATE generation_jobs
+            SET stage='portrait_confirmed', progress=0.55,
+              artifact_key=NULL, artifact_sha256=NULL, artifact_size=NULL,
+              error_code=NULL, error_params='{}', retryable=FALSE,
+              version=version+1, updated_at=now()
+            WHERE id=%s AND portrait_confirmed=TRUE AND portrait_key IS NOT NULL
+              AND stage IN ('ready', 'failed')
+            RETURNING *
+            """,
+            (job_id,),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        current = find_job(job_id)
+        if current["stage"] == "portrait_confirmed":
+            return generation_snapshot(current)
+        raise problem(
+            409,
+            "PORTRAIT_REPACKAGE_NOT_ALLOWED",
+            "Confirmed portrait is not ready for repackaging",
+        )
+    redis_client().rpush("epet:generation:queue", job_id)
+    return generation_snapshot(row)
+
+
+@app.post("/v1/generations/{job_id}/cancel")
+def cancel_generation(job_id: str) -> dict:
+    with connection() as conn:
+        row = conn.execute(
+            """
+            UPDATE generation_jobs
+            SET stage='cancel_requested', retryable=FALSE,
+              version=version+1, updated_at=now()
+            WHERE id=%s AND stage NOT IN ('ready', 'failed', 'canceled', 'expired')
+            RETURNING *
+            """,
+            (job_id,),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        return generation_snapshot(find_job(job_id))
+    redis_client().rpush("epet:generation:queue", job_id)
+    return generation_snapshot(row)
+
+
 @app.get("/v1/generations/{job_id}/artifact/content")
 def download_artifact(job_id: str) -> StreamingResponse:
     row = find_job(job_id)
@@ -389,6 +521,8 @@ def delete_generation(
     deletion_id = ident("del")
     if row["artifact_key"]:
         object_store().remove_object(settings.object_bucket, row["artifact_key"])
+    if row.get("portrait_key"):
+        object_store().remove_object(settings.object_bucket, row["portrait_key"])
     with connection() as conn:
         conn.execute("DELETE FROM generation_jobs WHERE id=%s", (job_id,))
         deletion = conn.execute(

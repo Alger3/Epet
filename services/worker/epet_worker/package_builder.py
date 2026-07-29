@@ -4,6 +4,8 @@ import json
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from .animation_renderer import CANVAS
+from .portrait_animation_renderer import render_portrait_animation
+from .semantic_portrait_renderer import render_semantic_human_animation
 from .providers.base import GenerationProvider
 from .providers.contracts import GenerationPlan, GenerationRequest
 from .providers.mock_provider import MockProvider
@@ -25,28 +27,54 @@ def build_epet(
     *,
     provider: GenerationProvider | None = None,
     plan: GenerationPlan | None = None,
+    portrait_provider: str | None = None,
 ) -> bytes:
     subject_kind = "human_avatar" if subject_kind == "human_avatar" else "pet_cat"
-    result = (provider or MockProvider()).generate(
-        GenerationRequest(
-            photo=photo,
-            display_name=display_name,
-            subject_kind=subject_kind,
-        ),
-        plan,
+    package_version = (
+        "2.1.0"
+        if portrait_provider and subject_kind == "human_avatar"
+        else "2.0.1"
+        if portrait_provider
+        else "2.0.0"
     )
-    rendered = result.payload
+    if portrait_provider:
+        rendered = (
+            render_semantic_human_animation(photo)
+            if subject_kind == "human_avatar"
+            else render_portrait_animation(photo, subject_kind)
+        )
+    else:
+        result = (provider or MockProvider()).generate(
+            GenerationRequest(
+                photo=photo,
+                display_name=display_name,
+                subject_kind=subject_kind,
+            ),
+            plan,
+        )
+        rendered = result.payload
     safe_name = display_name.strip()[:64] or "自定义桌宠"
     identity_hash = sha256(
         photo + b"\0" + safe_name.encode("utf-8") + b"\0" + subject_kind.encode()
     ).hexdigest()
     atlas = canonical_json(rendered["atlas"])
-    license_json = canonical_json(
-        {
-            "license": "Private local test asset",
-            "source": "User-provided photo palette processed by Epet rigged Mock Worker",
-        }
-    )
+    license_data = {
+        "license": "Private local test asset",
+        "source": "User-provided photo palette processed by Epet rigged Mock Worker",
+    }
+    if portrait_provider:
+        license_data.update(
+            {
+                "source": "Locally generated portrait adapted by Epet rigged Worker",
+                "portrait_provider": portrait_provider,
+                "model_license": "CreativeML OpenRAIL-M",
+                "usage_scope": (
+                    "Private local technical spike; style LoRA provenance "
+                    "review is incomplete"
+                ),
+            }
+        )
+    license_json = canonical_json(license_data)
     declared_files = {
         "animation/clips.json": canonical_json(rendered["clips"]),
         "animation/layers.json": canonical_json(rendered["layers"]),
@@ -57,10 +85,12 @@ def build_epet(
         "license.json": license_json,
         "thumbnail.png": rendered["thumbnail_png"],
     }
+    if rendered.get("pose"):
+        declared_files["animation/pose.json"] = canonical_json(rendered["pose"])
     manifest = canonical_json(
         {
             "schema_version": 2,
-            "package_version": "2.0.0",
+            "package_version": package_version,
             "min_runtime_version": "0.2.0",
             "pet_id": f"pet_{identity_hash[:16]}",
             "name": safe_name,
@@ -97,8 +127,13 @@ def build_epet(
                 "render_profile": "animation/render-profile.json",
             },
             "generation": {
-                "pipeline_version": "2.0.0",
+                "pipeline_version": package_version,
                 "template_version": rendered["rig"]["template_id"] + "-1.0.0",
+                **(
+                    {"portrait_provider": portrait_provider}
+                    if portrait_provider
+                    else {}
+                ),
             },
             "files": [
                 {

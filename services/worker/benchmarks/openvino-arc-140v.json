@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "device": "GPU",
+  "workload": {
+    "task": "image-to-image",
+    "width": 512,
+    "height": 512,
+    "batch_size": 1,
+    "seed": 20260728,
+    "input": "synthetic-reference"
+  },
+  "cold_run": {
+    "seed": 20260728,
+    "load_time_ms": 21224.489,
+    "cold_load_time_ms": 21224.489,
+    "inference_time_ms": 2395.242,
+    "peak_process_memory_mb": 6072.05,
+    "device": "GPU",
+    "width": 512,
+    "height": 512,
+    "batch_size": 1,
+    "total_time_ms": 35889.12
+  },
+  "repeat_run": {
+    "seed": 20260728,
+    "load_time_ms": 0.0,
+    "cold_load_time_ms": 21224.489,
+    "inference_time_ms": 2314.628,
+    "peak_process_memory_mb": 5987.64,
+    "device": "GPU",
+    "width": 512,
+    "height": 512,
+    "batch_size": 1,
+    "total_time_ms": 2361.102
+  },
+  "repeatability": {
+    "first_sha256": "6ca2b26fa43420abb57a7ac7ebcb1f5789b30ab92a2a3fc0bcb5111bc565e6df",
+    "second_sha256": "6ca2b26fa43420abb57a7ac7ebcb1f5789b30ab92a2a3fc0bcb5111bc565e6df",
+    "byte_identical": true
+  },
+  "cancellation": {
+    "requested_after_seconds": 2.0,
+    "observed": true,
+    "latency_ms": 2024.18,
+    "error_code": "GENERATION_CANCELLED"
+  },
+  "memory_note": "peak_process_memory_mb is peak host RSS sampled during the call; OpenVINO/Level Zero GPU allocation is not exposed by psutil."
+}

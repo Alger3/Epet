@@ -57,7 +57,7 @@ class HardwareProbe:
         script = (
             "$c=Get-CimInstance Win32_ComputerSystem;"
             "$g=Get-CimInstance Win32_VideoController | "
-            "Select-Object Name,AdapterRAM,PNPDeviceID;"
+            "Select-Object Name,AdapterRAM,PNPDeviceID,DriverVersion;"
             "[pscustomobject]@{Model=$c.Model;Gpu=@($g)} | ConvertTo-Json -Depth 4 -Compress"
         )
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -141,6 +141,7 @@ class HardwareProbe:
                     vendor=_vendor(name),
                     memory_mb=memory,
                     runtime=",".join(runtimes) if runtimes else UNKNOWN,
+                    driver_version=str(row.get("DriverVersion") or UNKNOWN),
                     available=True,
                 )
             )

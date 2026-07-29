@@ -4,6 +4,7 @@ from hashlib import sha256
 from io import BytesIO
 import json
 from pathlib import Path
+import os
 import sys
 import time
 from urllib.request import Request, urlopen
@@ -41,11 +42,23 @@ def photo() -> bytes:
 
 
 def wait_ready(job_id: str) -> dict:
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + float(os.environ.get("EPET_E2E_TIMEOUT", "900"))
+    portrait_confirmed = False
     while time.monotonic() < deadline:
         snapshot = json_call(f"/v1/generations/{job_id}")
         if snapshot["stage"] == "ready":
             return snapshot
+        if (
+            snapshot["stage"] == "awaiting_portrait_confirmation"
+            and not portrait_confirmed
+        ):
+            portrait = json_call(f"/v1/generations/{job_id}/portrait")
+            with urlopen(portrait["preview_url"]) as response:
+                content = response.read()
+            assert len(content) == portrait["size"]
+            assert sha256(content).hexdigest() == portrait["sha256"]
+            json_call(f"/v1/generations/{job_id}/portrait/confirm", "POST")
+            portrait_confirmed = True
         if snapshot["stage"] in {"failed", "canceled", "expired"}:
             raise RuntimeError(snapshot)
         time.sleep(0.2)

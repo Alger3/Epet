@@ -3,8 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { SubjectKind } from "../shared/characters";
 import {
   getGenerationCapabilities,
+  getPortraitPreview,
+  requestCapabilityProbe,
   requestModelDownload,
   type GenerationCapabilities,
+  type PortraitPreview,
   type ProviderSelection,
 } from "../shared/generation-service";
 import {
@@ -307,7 +310,11 @@ export function CreateCharacterPanel() {
             </div>
           </div>
         ) : (
-          <DraftProgress draft={draft} />
+          <DraftProgress
+            draft={draft}
+            onConfirm={() => void workshop.confirmPortrait(draft.id)}
+            onResume={() => void workshop.resumeGenerationInstall(draft.id)}
+          />
         )}
       </div>
 
@@ -316,13 +323,28 @@ export function CreateCharacterPanel() {
         error={capabilityError}
         selection={providerSelection}
         onChange={setProviderSelection}
-        onRefresh={() => setCapabilityRefresh((value) => value + 1)}
+        onRefresh={() => {
+          void requestCapabilityProbe()
+            .then(() => {
+              window.setTimeout(
+                () => setCapabilityRefresh((value) => value + 1),
+                1200,
+              );
+            })
+            .catch((reason) =>
+              setCapabilityError(reason instanceof Error ? reason.message : String(reason)),
+            );
+        }}
       />
 
       <div className="draft-actions">
         <button
           className="primary-button"
-          disabled={!draft.photos.some((photo) => photo.role === "primary") || workshop.busy}
+          disabled={
+            !draft.photos.some((photo) => photo.role === "primary") ||
+            workshop.busy ||
+            draft.status === "awaiting_confirmation"
+          }
           onClick={() => void workshop.startGeneration(draft.id, providerSelection)}
           type="button"
         >
@@ -377,6 +399,7 @@ function ProviderPanel({
   );
   const speedLabel = (speed?: string) =>
     ({ fast: "较快", medium: "中等", slow: "较慢", unknown: "未知" })[speed ?? "unknown"];
+  const openvino = capabilities?.runtime_probes?.openvino;
 
   return (
     <section className="provider-panel" aria-labelledby="provider-title">
@@ -412,6 +435,34 @@ function ProviderPanel({
                 : "unknown"}
             </span>
           </div>
+          {openvino ? (
+            <div className="runtime-probe" aria-label="OpenVINO 运行探针">
+              <div>
+                <strong>OpenVINO</strong>
+                <span>{openvino.runtime_version}</span>
+              </div>
+              <ProbeState label="运行时" passed={openvino.runtime_available} />
+              <ProbeState label="GPU 编译" passed={openvino.compile_verified} />
+              <ProbeState label="测试推理" passed={openvino.inference_verified} />
+              <small>
+                设备：{openvino.target_device} · {openvino.full_device_name}
+              </small>
+              {openvino.compile_verified ? (
+                <small>
+                  编译 {openvino.compile_time_ms} ms · 推理 {openvino.inference_time_ms} ms ·
+                  精度 {openvino.supported_precisions.join(", ") || "unknown"}
+                </small>
+              ) : null}
+              <small>
+                架构：{openvino.device_architecture} · 驱动：{openvino.driver_version}
+              </small>
+              {openvino.error_message ? (
+                <small className="probe-error">
+                  {openvino.error_code}：{openvino.error_message}
+                </small>
+              ) : null}
+            </div>
+          ) : null}
           <div className="provider-mode" role="group" aria-label="Provider 选择方式">
             <button
               aria-pressed={selection.providerMode === "auto"}
@@ -485,7 +536,8 @@ function ProviderPanel({
             ) : null}
             {selectedCapability?.model_id &&
             !selectedCapability.model_downloaded &&
-            selectedModel?.download_url ? (
+            (selectedModel?.download_url ||
+              selectedCapability.model_id === "epet-portrait-openvino-v1") ? (
               <button
                 className="secondary-button compact-button"
                 onClick={() => {
@@ -495,7 +547,9 @@ function ProviderPanel({
                 }}
                 type="button"
               >
-                下载所需模型
+                {selectedCapability.model_id === "epet-portrait-openvino-v1"
+                  ? "准备 OpenVINO FP16 模型"
+                  : "下载所需模型"}
               </button>
             ) : selectedCapability?.model_id && !selectedCapability.model_downloaded ? (
               <small>模型下载源尚未配置；当前不能把该 Provider 标记为可用。</small>
@@ -510,6 +564,14 @@ function ProviderPanel({
         </>
       )}
     </section>
+  );
+}
+
+function ProbeState({ label, passed }: { label: string; passed: boolean }) {
+  return (
+    <span className={passed ? "probe-state probe-state-ok" : "probe-state probe-state-off"}>
+      {label}：{passed ? "通过" : "未通过"}
+    </span>
   );
 }
 
@@ -641,7 +703,37 @@ function SubjectSelection({
   );
 }
 
-function DraftProgress({ draft }: { draft: CreationDraft }) {
+function DraftProgress({
+  draft,
+  onConfirm,
+  onResume,
+}: {
+  draft: CreationDraft;
+  onConfirm(): void;
+  onResume(): void;
+}) {
+  const [portrait, setPortrait] = useState<PortraitPreview | null>(null);
+  const [portraitError, setPortraitError] = useState<string | null>(null);
+  useEffect(() => {
+    if (draft.status !== "awaiting_confirmation" || !draft.serverJobId) {
+      setPortrait(null);
+      return;
+    }
+    let active = true;
+    void getPortraitPreview(draft.serverJobId)
+      .then((value) => {
+        if (active) {
+          setPortrait(value);
+          setPortraitError(null);
+        }
+      })
+      .catch((reason) => {
+        if (active) setPortraitError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [draft.serverJobId, draft.status]);
   const currentIndex = useMemo(
     () => GENERATION_STAGES.findIndex(([status]) => status === draft.status),
     [draft.status],
@@ -677,10 +769,58 @@ function DraftProgress({ draft }: { draft: CreationDraft }) {
           </li>
         ))}
       </ol>
+      {draft.status === "awaiting_confirmation" ? (
+        <div className="portrait-confirmation">
+          {portrait ? (
+            <img alt="OpenVINO 生成的 Q 版静态预览" src={portrait.dataUrl} />
+          ) : (
+            <div className="photo-placeholder">正在校验预览…</div>
+          )}
+          <div>
+            <strong>确认静态 Q 版形象</strong>
+            <p>
+              确认后会保留这张形象；人物将检测姿态、拆分头身和四肢、绑定骨骼并生成
+              Atlas，猫咪当前仍使用整体形变动画。
+            </p>
+            {portrait ? (
+              <small>
+                加载 {String(portrait.metrics.load_time_ms ?? "unknown")} ms · 推理{" "}
+                {String(portrait.metrics.inference_time_ms ?? "unknown")} ms · 峰值进程内存{" "}
+                {String(portrait.metrics.peak_process_memory_mb ?? "unknown")} MB
+                {" · "}身份条件{" "}
+                {portrait.metrics.identity_conditioning ===
+                "segmented-img2img-reference-v1"
+                  ? "分割参考图（非 FaceID）"
+                  : "unknown"}
+              </small>
+            ) : null}
+            {portraitError ? <small className="probe-error">{portraitError}</small> : null}
+            <button
+              className="primary-button"
+              disabled={!portrait}
+              onClick={onConfirm}
+              type="button"
+            >
+              确认并生成桌宠动画
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {draft.serverJobId &&
+      (draft.status === "packaging" ||
+        draft.status === "completed" ||
+        (draft.status === "failed" && draft.retryable)) ? (
+        <button className="primary-button" onClick={onResume} type="button">
+          {draft.status === "completed"
+            ? "重新打包并替换旧模板角色"
+            : "检查任务并继续安装"}
+        </button>
+      ) : null}
       <div className="preview-boundary">
         <strong>标准立绘确认与动作预览</strong>
         <p>
-          服务端返回 `awaiting_confirmation` 后在这里显示标准立绘；动作完成后使用与桌宠相同的 Sprite Atlas 播放器预览。
+          服务端返回 `awaiting_confirmation` 后在这里显示标准立绘；人物确认后会生成语义骨骼
+          Sprite Atlas，不会用 Mock 模板重画角色。
         </p>
       </div>
     </div>

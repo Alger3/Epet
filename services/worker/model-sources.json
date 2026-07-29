@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "workflow_id": "epet-openvino-img2img-v1",
+  "status": "local-technical-spike",
+  "base_model": {
+    "repository": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    "revision": "451f4fe16113bff5a5d2269ed5ad43b0592e9a14",
+    "license": "creativeml-openrail-m",
+    "purpose": "SD1.5 512x512 img2img base"
+  },
+  "style_lora": {
+    "repository": "AlawnCN/Lora",
+    "revision": "da64e343c16010a9c1c175c4c82b205c2288c304",
+    "filename": "chibi/blindbox_V1Mix.safetensors",
+    "sha256": "525491e6289d1912839c0bb5e3c3c390fead13c46cdd435c1b6a6ab3ea9ac14f",
+    "size": 151108831,
+    "license": "openrail",
+    "scale": 0.85,
+    "release_approved": false,
+    "trigger_words": ["full body", "chibi"],
+    "review_note": "The repository and attached Civitai metadata identify SD1.5, OpenRAIL, the trained words 'full body, chibi', and the exact file hash. Training-image provenance is still incomplete, so use only for this local technical spike."
+  },
+  "foreground_model": {
+    "name": "U2NETP",
+    "source": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+    "upstream": "https://github.com/xuebinqin/U-2-Net",
+    "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    "size": 4574861,
+    "license": "apache-2.0",
+    "purpose": "Local foreground extraction before img2img and before portrait packaging"
+  },
+  "pose_model": {
+    "name": "human-pose-estimation-0001",
+    "source": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2022.1/models_bin/3/human-pose-estimation-0001/FP16/",
+    "xml_sha256": "2907250931ecb23a9d321278ac58fc1fff1d0c14bf056c0fe6206aa862ab234f",
+    "bin_sha256": "1085b20f87b69de129a0dcac2dbb4aba7c18e044eaa4fb298239ab05ebd56efe",
+    "size": 8445876,
+    "license": "apache-2.0",
+    "purpose": "18-keypoint local human pose estimation for semantic rig binding"
+  },
+  "export": {
+    "format": "openvino-ir",
+    "weight_format": "fp16",
+    "task": "image-to-image",
+    "lora_components": ["unet"],
+    "compatibility_note": "The LoRA text-encoder component is excluded because PEFT 0.18 + Transformers 5 serializes an invalid CLIP wrapper prefix for this export path. Fixed-revision base weights are temporarily upcast to FP32 for CPU tracing, and the final OpenVINO IR is compressed to FP16.",
+    "height": 512,
+    "width": 512,
+    "batch_size": 1
+  }
+}

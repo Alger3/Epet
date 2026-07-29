@@ -216,6 +216,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GenerationCapabilities'
+  /v1/capabilities/probe:
+    post:
+      tags: [Generations]
+      operationId: probeGenerationCapabilities
+      responses:
+        '202':
+          description: Hardware and runtime probe queued.
   /v1/models/{model_id}/download:
     post:
       tags: [Generations]
@@ -334,13 +341,6 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/JobId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VersionCommand'
       responses:
         '200':
           description: Portrait confirmed idempotently.
@@ -350,6 +350,44 @@ paths:
                 $ref: '#/components/schemas/GenerationSnapshot'
         '401':
           $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/portrait/repackage:
+    post:
+      tags: [Generations]
+      operationId: repackageConfirmedPortrait
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Approved portrait queued for artifact-only repackaging without rerunning diffusion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /v1/generations/{job_id}/portrait:
+    get:
+      tags: [Generations]
+      operationId: getGenerationPortrait
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Generated static portrait preview and metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortraitPreview'
         '404':
           $ref: '#/components/responses/Problem'
         '409':
@@ -707,6 +745,8 @@ components:
           maximum: 1
         provider:
           $ref: '#/components/schemas/GenerationProviderExecution'
+        portrait:
+          $ref: '#/components/schemas/PortraitState'
         portrait_preview_url:
           type: string
           format: uri
@@ -743,6 +783,35 @@ components:
           type: [string, 'null']
         estimated_speed:
           type: [string, 'null']
+    PortraitState:
+      type: object
+      additionalProperties: false
+      required: [ready, confirmed, metrics]
+      properties:
+        ready:
+          type: boolean
+        confirmed:
+          type: boolean
+        metrics:
+          type: object
+          additionalProperties: true
+    PortraitPreview:
+      type: object
+      additionalProperties: false
+      required: [preview_url, size, sha256, metrics]
+      properties:
+        preview_url:
+          type: string
+          format: uri
+        size:
+          type: integer
+          minimum: 1
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        metrics:
+          type: object
+          additionalProperties: true
     GenerationCapabilities:
       type: object
       additionalProperties: true
@@ -759,6 +828,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/HardwareSnapshot'
             - type: 'null'
+        runtime_probes:
+          type: object
+          additionalProperties: false
+          properties:
+            openvino:
+              $ref: '#/components/schemas/RuntimeProbe'
         providers:
           type: array
           items:
@@ -812,6 +887,8 @@ components:
               const: unknown
         runtime:
           type: string
+        driver_version:
+          type: string
         available:
           type: boolean
         unavailable_reason:
@@ -835,9 +912,95 @@ components:
           enum: [fast, medium, slow, unknown]
         unavailable_reason:
           type: [string, 'null']
+        detected:
+          type: boolean
+        runtime_available:
+          type: boolean
+        compile_verified:
+          type: boolean
+        inference_verified:
+          type: boolean
+        runtime_version:
+          type: string
+        full_device_name:
+          type: string
+        driver_version:
+          type: string
+        device_architecture:
+          type: string
+        supported_precisions:
+          type: array
+          items:
+            type: string
+        compile_time_ms:
+          oneOf:
+            - type: number
+            - type: string
+              const: unknown
+        inference_time_ms:
+          oneOf:
+            - type: number
+            - type: string
+              const: unknown
+    RuntimeProbe:
+      type: object
+      additionalProperties: false
+      required:
+        - runtime_id
+        - detected
+        - runtime_available
+        - compile_verified
+        - inference_verified
+        - runtime_version
+        - available_devices
+        - target_device
+        - full_device_name
+      properties:
+        runtime_id:
+          type: string
+        detected:
+          type: boolean
+        runtime_available:
+          type: boolean
+        compile_verified:
+          type: boolean
+        inference_verified:
+          type: boolean
+        runtime_version:
+          type: string
+        available_devices:
+          type: array
+          items:
+            type: string
+        target_device:
+          type: string
+        full_device_name:
+          type: string
+        driver_version:
+          type: string
+        device_architecture:
+          type: string
+        supported_precisions:
+          type: array
+          items:
+            type: string
+        compile_time_ms:
+          oneOf:
+            - type: number
+            - type: string
+              const: unknown
+        inference_time_ms:
+          oneOf:
+            - type: number
+            - type: string
+              const: unknown
+        error_code:
+          type: [string, 'null']
+        error_message:
+          type: [string, 'null']
     GenerationStage:
       type: string
-      enum: [created, validating, generating_portrait, awaiting_portrait_confirmation, generating_actions, postprocessing, quality_check, packaging, ready, cancel_requested, failed, canceled, expired]
+      enum: [created, validating, generating_portrait, awaiting_portrait_confirmation, portrait_confirmed, generating_actions, postprocessing, quality_check, packaging, ready, cancel_requested, failed, canceled, expired]
     VersionCommand:
       type: object
       additionalProperties: false

@@ -1204,6 +1204,70 @@ button:disabled {
   color: #b76b00;
 }
 
+.runtime-probe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f3f5ef;
+}
+
+.runtime-probe > div,
+.runtime-probe > small {
+  flex-basis: 100%;
+}
+
+.runtime-probe > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.probe-state {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.probe-state-ok {
+  color: #175e38;
+  background: #dff3e7;
+}
+
+.probe-state-off {
+  color: #765a22;
+  background: #f5ead0;
+}
+
+.probe-error {
+  color: #9a3f35;
+}
+
+.portrait-confirmation {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  gap: 18px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #e2c7ad;
+  border-radius: 16px;
+  background: #fff9f2;
+}
+
+.portrait-confirmation img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 14px;
+  background: white;
+}
+
+.portrait-confirmation > div {
+  display: grid;
+  gap: 10px;
+}
+
 .crop-actions > button,
 .draft-actions > button {
   width: auto;

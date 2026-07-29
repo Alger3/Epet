@@ -17,13 +17,13 @@
       "model_id": "epet-portrait-openvino-v1",
       "provider_id": "openvino-gpu",
       "revision": "1.0.0",
-      "filename": "model.xml",
+      "filename": ".epet-model.json",
       "sha256": null,
       "download_url": null,
       "built_in": false,
-      "license": "not-yet-selected",
+      "license": "CreativeML OpenRAIL-M; local technical spike only",
       "precision": "fp16",
-      "export_profile": "portrait-v1"
+      "export_profile": "sd15-chibi-img2img-512-b1-v1"
     },
     {
       "model_id": "epet-portrait-openvino-cpu-v1",

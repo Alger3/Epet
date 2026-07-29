@@ -14,6 +14,17 @@ def source_png() -> bytes:
     return output.getvalue()
 
 
+def confirmed_portrait_png() -> bytes:
+    image = Image.new("RGB", (512, 512), (244, 241, 232))
+    for x in range(150, 363):
+        for y in range(80, 451):
+            if ((x - 256) / 106) ** 2 + ((y - 265) / 185) ** 2 <= 1:
+                image.putpixel((x, y), (42, 91, 188))
+    output = BytesIO()
+    image.save(output, "PNG")
+    return output.getvalue()
+
+
 def test_package_is_deterministic_and_self_describing() -> None:
     first = build_epet(source_png(), "测试猫咪")
     second = build_epet(source_png(), "测试猫咪")
@@ -114,3 +125,41 @@ def test_human_template_has_limbs_secondary_motion_and_distinct_identity() -> No
     assert any(bone["id"] == "forearm_l" for bone in rig["bones"])
     assert any(bone["id"] == "hair_back" for bone in rig["bones"])
     assert "secondary_motion.rotation" in clips["clips"]["walk"]["channels"]
+
+
+def test_confirmed_portrait_is_preserved_in_installed_atlas() -> None:
+    package = build_epet(
+        confirmed_portrait_png(),
+        "OpenVINO portrait",
+        "human_avatar",
+        portrait_provider="openvino-gpu",
+    )
+    with ZipFile(BytesIO(package)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        profile = json.loads(archive.read("animation/render-profile.json"))
+        layers = json.loads(archive.read("animation/layers.json"))
+        with Image.open(BytesIO(archive.read("thumbnail.png"))) as thumbnail:
+            rgba = thumbnail.convert("RGBA")
+            center = rgba.getpixel((128, 128))
+            corner = rgba.getpixel((0, 0))
+    assert manifest["generation"]["portrait_provider"] == "openvino-gpu"
+    assert manifest["package_version"] == "2.1.0"
+    assert manifest["generation"]["pipeline_version"] == "2.1.0"
+    assert manifest["generation"]["template_version"].startswith(
+        "human-semantic-cutout"
+    )
+    assert profile["profile_id"] == "semantic-human-rig-v1"
+    assert any(
+        part["source"] == "semantic_portrait" for part in layers["parts"]
+    )
+    assert {
+        "head",
+        "torso",
+        "arm_l",
+        "arm_r",
+        "leg_l",
+        "leg_r",
+    }.issubset({part["id"] for part in layers["parts"]})
+    assert center[2] > center[0]
+    assert center[3] > 200
+    assert corner[3] == 0

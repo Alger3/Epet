@@ -3,7 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SubjectKind } from "./characters";
 import {
+  cancelRemoteGeneration,
+  confirmPortraitInstallAndActivate,
   generateInstallAndActivate,
+  resumeGenerationInstallAndActivate,
   type ProviderSelection,
 } from "./generation-service";
 
@@ -204,8 +207,24 @@ export function useWorkshopState() {
         if (!draft) throw new Error("未找到要生成的本地草稿。");
         await generateInstallAndActivate(draft, reload, selection);
       }),
+    confirmPortrait: (draftId: string) =>
+      run(async () => {
+        const draft = snapshot.drafts.find((item) => item.id === draftId);
+        if (!draft) throw new Error("未找到要确认的本地草稿。");
+        await confirmPortraitInstallAndActivate(draft, reload);
+      }),
+    resumeGenerationInstall: (draftId: string) =>
+      run(async () => {
+        const draft = snapshot.drafts.find((item) => item.id === draftId);
+        if (!draft) throw new Error("未找到要恢复安装的本地草稿。");
+        await resumeGenerationInstallAndActivate(draft, reload);
+      }),
     cancelDraft: (draftId: string) =>
-      run(() => invoke<CreationDraft>("cancel_character_draft", { draftId })),
+      run(async () => {
+        const draft = snapshot.drafts.find((item) => item.id === draftId);
+        if (draft?.serverJobId) await cancelRemoteGeneration(draft.serverJobId);
+        return invoke<CreationDraft>("cancel_character_draft", { draftId });
+      }),
     deleteDraft: async (draftId: string) => {
       const deleted = await run(
         () => invoke<boolean>("delete_character_draft", { draftId }),

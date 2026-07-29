@@ -1,4 +1,4 @@
-# Epet CPU/Mock Worker
+# Epet Generation Worker
 
 Worker 通过 Redis `BLPOP` 消费任务，从 MinIO 读取清理后的主照片，并使用 Pillow 生成
 一个确定性多帧 Sprite Atlas。它从照片提取稳定配色，然后按主体选择猫咪短毛模板或
@@ -16,9 +16,12 @@ npm run dev:worker
 
 - `animation/layers.json`：标准化部件、绑定骨骼、旋转中心与层级；
 - `animation/rig.json`：猫咪或人物标准骨骼与锚点；
+- `animation/pose.json`：真实人物关键点来源、置信度和语义部件覆盖率；
 - `animation/clips.json`：动作帧数、通道、事件和时间/距离相位；
 - `animation/render-profile.json`：确定性画布、超采样、排序与 PNG 参数；
 - `atlas/pet.json` 与 `atlas/pet.png`：桌面运行时实际加载的烘焙结果。
 
-这不是最终 AI 图像生成器：照片目前只用于派生测试角色配色，不会保留照片外观或完成
-身份一致的 Q 版重绘。真实立绘和部件 Mask 将由下一阶段 Provider 生成，再复用本动画流水线。
+MockProvider 仍只从照片派生测试角色配色。OpenVINO 人物路线会先生成透明 Q 版预览；
+用户确认后，使用 `human-pose-estimation-0001` 检测关键点，将像素拆为头、躯干、
+双臂和双腿，绑定骨骼并烘焙 Atlas，同时写入 `animation/pose.json`。当前身份条件是
+分割前景 img2img 参考，并非 IP-Adapter/FaceID；猫咪路线也暂未接入语义关键点模型。

@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS generation_jobs (
   actual_device_id TEXT,
   model_id TEXT,
   estimated_speed TEXT,
+  portrait_key TEXT,
+  portrait_sha256 TEXT,
+  portrait_size BIGINT,
+  portrait_metrics JSONB NOT NULL DEFAULT '{}',
+  portrait_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -58,6 +63,11 @@ ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS actual_provider TEXT;
 ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS actual_device_id TEXT;
 ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS model_id TEXT;
 ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS estimated_speed TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS portrait_key TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS portrait_sha256 TEXT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS portrait_size BIGINT;
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS portrait_metrics JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE generation_jobs ADD COLUMN IF NOT EXISTS portrait_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS deletions (
   id TEXT PRIMARY KEY,

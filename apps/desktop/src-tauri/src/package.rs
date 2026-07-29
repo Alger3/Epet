@@ -116,6 +116,8 @@ pub struct ManifestAnimation {
 pub struct Generation {
     pub pipeline_version: String,
     pub template_version: String,
+    #[serde(default)]
+    pub portrait_provider: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -419,6 +421,11 @@ fn validate_manifest(
             .any(char::is_control)
     {
         return invalid("generation.template_version 长度必须为 1-64");
+    }
+    if let Some(provider) = manifest.generation.portrait_provider.as_deref()
+        && !matches!(provider, "mock" | "cuda" | "openvino-gpu" | "openvino-cpu")
+    {
+        return invalid("generation.portrait_provider 不是受支持的 Provider");
     }
 
     if manifest.hitboxes.is_empty() || manifest.hitboxes.len() > 16 {
@@ -1020,6 +1027,45 @@ mod tests {
         assert_eq!(
             PackageSummary::from(&package).action_names,
             vec!["idle", "sleep", "tap", "walk"]
+        );
+    }
+
+    #[test]
+    fn accepts_valid_portrait_provider_metadata() {
+        let mut entries = valid_entries();
+        let manifest_entry = entries
+            .iter_mut()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap();
+        let mut manifest: serde_json::Value = serde_json::from_slice(&manifest_entry.1).unwrap();
+        manifest["generation"]["portrait_provider"] = json!("openvino-gpu");
+        manifest_entry.1 = serde_json::to_vec(&manifest).unwrap();
+
+        let (_directory, path) = write_package(entries);
+        let package = load_epet(&path, None).unwrap();
+        assert_eq!(
+            package.manifest.generation.portrait_provider.as_deref(),
+            Some("openvino-gpu")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_portrait_provider_metadata() {
+        let mut entries = valid_entries();
+        let manifest_entry = entries
+            .iter_mut()
+            .find(|(name, _)| name == "manifest.json")
+            .unwrap();
+        let mut manifest: serde_json::Value = serde_json::from_slice(&manifest_entry.1).unwrap();
+        manifest["generation"]["portrait_provider"] = json!("unknown-provider");
+        manifest_entry.1 = serde_json::to_vec(&manifest).unwrap();
+
+        let (_directory, path) = write_package(entries);
+        assert!(
+            load_epet(&path, None)
+                .unwrap_err()
+                .to_string()
+                .contains("portrait_provider")
         );
     }
 

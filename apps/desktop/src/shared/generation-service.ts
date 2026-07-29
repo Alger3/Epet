@@ -6,6 +6,7 @@ const API_BASE_URL = (
   import.meta.env.VITE_EPET_API_BASE_URL ?? "http://127.0.0.1:8000"
 ).replace(/\/$/, "");
 const TERMINAL_STAGES = new Set(["ready", "failed", "canceled", "expired"]);
+const PAUSE_STAGES = new Set(["awaiting_portrait_confirmation"]);
 
 interface UploadGrant {
   upload_id: string;
@@ -20,6 +21,17 @@ interface GenerationSnapshot {
   retryable: boolean;
   progress?: number | null;
   error?: { code: string; params: Record<string, unknown> } | null;
+  portrait?: {
+    ready: boolean;
+    confirmed: boolean;
+    metrics: Record<string, unknown>;
+  };
+}
+
+export interface PortraitPreview {
+  dataUrl: string;
+  sha256: string;
+  metrics: Record<string, unknown>;
 }
 
 export interface ProviderSelection {
@@ -45,6 +57,25 @@ export interface GenerationCapabilities {
     system_memory_mb: number | "unknown";
     warnings: string[];
   } | null;
+  runtime_probes?: {
+    openvino?: {
+      detected: boolean;
+      runtime_available: boolean;
+      compile_verified: boolean;
+      inference_verified: boolean;
+      runtime_version: string;
+      available_devices: string[];
+      target_device: string;
+      full_device_name: string;
+      driver_version: string;
+      device_architecture: string;
+      supported_precisions: string[];
+      compile_time_ms: number | "unknown";
+      inference_time_ms: number | "unknown";
+      error_code?: string | null;
+      error_message?: string | null;
+    };
+  };
   automatic_plan:
     | {
         provider_id?: string;
@@ -70,6 +101,17 @@ export interface GenerationCapabilities {
     estimated_speed: string;
     unavailable_reason?: string | null;
     development_only: boolean;
+    detected: boolean;
+    runtime_available: boolean;
+    compile_verified: boolean;
+    inference_verified: boolean;
+    runtime_version: string;
+    full_device_name: string;
+    driver_version: string;
+    device_architecture: string;
+    supported_precisions: string[];
+    compile_time_ms: number | "unknown";
+    inference_time_ms: number | "unknown";
   }>;
   models: Array<{
     model_id: string;
@@ -132,6 +174,10 @@ export function getGenerationCapabilities(): Promise<GenerationCapabilities> {
   return request<GenerationCapabilities>("/v1/capabilities");
 }
 
+export function requestCapabilityProbe(): Promise<void> {
+  return request("/v1/capabilities/probe", { method: "POST" });
+}
+
 export function requestModelDownload(modelId: string): Promise<void> {
   return request(`/v1/models/${encodeURIComponent(modelId)}/download`, {
     method: "POST",
@@ -179,6 +225,7 @@ function toDraftUpdate(snapshot: GenerationSnapshot): DraftUpdate {
     validating: "checking",
     generating_portrait: "generating_portrait",
     awaiting_portrait_confirmation: "awaiting_confirmation",
+    portrait_confirmed: "generating_actions",
     generating_actions: "generating_actions",
     postprocessing: "packaging",
     quality_check: "packaging",
@@ -236,7 +283,7 @@ async function watchGeneration(
       if (snapshot.version <= latestVersion) return;
       latestVersion = snapshot.version;
       chain = chain.then(() => onSnapshot(snapshot));
-      if (TERMINAL_STAGES.has(snapshot.stage)) {
+      if (TERMINAL_STAGES.has(snapshot.stage) || PAUSE_STAGES.has(snapshot.stage)) {
         chain.then(() => finish(snapshot)).catch(fail);
       }
     };
@@ -253,7 +300,7 @@ async function watchGeneration(
     }, 1500);
     timeout = window.setTimeout(() => {
       fail(new Error("生成任务等待超时，请稍后重试。"));
-    }, 2 * 60 * 1000);
+    }, 15 * 60 * 1000);
     void request<GenerationSnapshot>(`/v1/generations/${jobId}`).then(accept).catch(fail);
   });
 }
@@ -303,24 +350,11 @@ export async function generateInstallAndActivate(
       await persist(draft.id, toDraftUpdate(next));
       await onChanged();
     });
+    if (ready.stage === "awaiting_portrait_confirmation") return;
     if (ready.stage !== "ready") {
       throw new Error(ready.error?.code ?? `生成任务结束于 ${ready.stage}`);
     }
-    const artifact = await request<Artifact>(`/v1/generations/${job.job_id}/artifact`);
-    const installed = await invoke<InstalledCharacter>("install_pet_package_from_url", {
-      url: artifact.download_url,
-      expectedSha256: artifact.sha256,
-    });
-    await invoke("set_active_character", { characterId: installed.id });
-    await persist(draft.id, {
-      status: "completed",
-      progressPercent: 100,
-      serverJobId: job.job_id,
-      errorCode: null,
-      errorMessage: null,
-      retryable: false,
-    });
-    await onChanged();
+    await installReadyArtifact(draft.id, job.job_id, onChanged);
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : String(reason);
     await persist(draft.id, {
@@ -336,4 +370,143 @@ export async function generateInstallAndActivate(
     await onChanged();
     throw reason;
   }
+}
+
+async function installReadyArtifact(
+  draftId: string,
+  jobId: string,
+  onChanged: () => Promise<void>,
+): Promise<void> {
+  const artifact = await request<Artifact>(`/v1/generations/${jobId}/artifact`);
+  const installed = await invoke<InstalledCharacter>("install_pet_package_from_url", {
+    url: artifact.download_url,
+    expectedSha256: artifact.sha256,
+  });
+  await invoke("set_active_character", { characterId: installed.id });
+  await persist(draftId, {
+    status: "completed",
+    progressPercent: 100,
+    serverJobId: jobId,
+    errorCode: null,
+    errorMessage: null,
+    retryable: false,
+  });
+  await onChanged();
+}
+
+async function persistInstallFailure(
+  draftId: string,
+  jobId: string,
+  reason: unknown,
+  onChanged: () => Promise<void>,
+): Promise<never> {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  await persist(draftId, {
+    status: "failed",
+    progressPercent: 100,
+    serverJobId: jobId,
+    errorCode: "package_install_failed",
+    errorMessage: `桌宠包安装失败：${message}`,
+    retryable: true,
+  });
+  await onChanged();
+  throw reason;
+}
+
+export async function getPortraitPreview(jobId: string): Promise<PortraitPreview> {
+  const metadata = await request<{
+    preview_url: string;
+    sha256: string;
+    metrics: Record<string, unknown>;
+  }>(`/v1/generations/${jobId}/portrait`);
+  const blob = await fetch(metadata.preview_url).then((response) => {
+    if (!response.ok) throw new Error(`预览图下载失败：HTTP ${response.status}`);
+    return response.blob();
+  });
+  const actual = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()))]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  if (actual !== metadata.sha256) throw new Error("预览图 SHA-256 校验失败。");
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("无法读取预览图。"));
+    reader.readAsDataURL(blob);
+  });
+  return { dataUrl, sha256: metadata.sha256, metrics: metadata.metrics };
+}
+
+export async function confirmPortraitInstallAndActivate(
+  draft: CreationDraft,
+  onChanged: () => Promise<void>,
+): Promise<void> {
+  if (!draft.serverJobId) throw new Error("草稿缺少服务端任务 ID。");
+  try {
+    const snapshot = await request<GenerationSnapshot>(
+      `/v1/generations/${draft.serverJobId}/portrait/confirm`,
+      { method: "POST" },
+    );
+    await persist(draft.id, toDraftUpdate(snapshot));
+    await onChanged();
+    const ready = await watchGeneration(draft.serverJobId, async (next) => {
+      await persist(draft.id, toDraftUpdate(next));
+      await onChanged();
+    });
+    if (ready.stage !== "ready") {
+      throw new Error(ready.error?.code ?? `生成任务结束于 ${ready.stage}`);
+    }
+    await installReadyArtifact(draft.id, draft.serverJobId, onChanged);
+  } catch (reason) {
+    await persistInstallFailure(
+      draft.id,
+      draft.serverJobId,
+      reason,
+      onChanged,
+    );
+  }
+}
+
+export async function resumeGenerationInstallAndActivate(
+  draft: CreationDraft,
+  onChanged: () => Promise<void>,
+): Promise<void> {
+  if (!draft.serverJobId) throw new Error("草稿缺少可恢复的服务端任务 ID。");
+  try {
+    let snapshot = await request<GenerationSnapshot>(
+      `/v1/generations/${draft.serverJobId}`,
+    );
+    if (snapshot.stage === "ready") {
+      // A ready artifact may have been created by an older Worker that
+      // replaced the approved portrait with the procedural Mock template.
+      // Repackaging is cheap and preserves the approved portrait; it does not
+      // rerun OpenVINO diffusion.
+      snapshot = await request<GenerationSnapshot>(
+        `/v1/generations/${draft.serverJobId}/portrait/repackage`,
+        { method: "POST" },
+      );
+    }
+    await persist(draft.id, toDraftUpdate(snapshot));
+    await onChanged();
+    if (!TERMINAL_STAGES.has(snapshot.stage)) {
+      snapshot = await watchGeneration(draft.serverJobId, async (next) => {
+        await persist(draft.id, toDraftUpdate(next));
+        await onChanged();
+      });
+    }
+    if (snapshot.stage !== "ready") {
+      throw new Error(snapshot.error?.code ?? `生成任务结束于 ${snapshot.stage}`);
+    }
+    await installReadyArtifact(draft.id, draft.serverJobId, onChanged);
+  } catch (reason) {
+    await persistInstallFailure(
+      draft.id,
+      draft.serverJobId,
+      reason,
+      onChanged,
+    );
+  }
+}
+
+export async function cancelRemoteGeneration(jobId: string): Promise<void> {
+  await request(`/v1/generations/${jobId}/cancel`, { method: "POST" });
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib.util
 import os
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 from .contracts import GenerationPlan, ProviderError
 from .hardware_probe import HardwareProbe
 from .model_manager import ModelManager
+from .openvino_probe import OpenVinoProbe
+from .openvino_gpu_provider import OpenVinoGpuProvider
 from .planner import HardwarePlanner, build_capabilities
 from .registry import ProviderRegistry
 
@@ -23,23 +26,47 @@ class CapabilityService:
         )
         self.models = ModelManager(worker_root / "model-manifest.json", cache)
         self.registry = ProviderRegistry()
+        openvino_model = self.models.models["epet-portrait-openvino-v1"]
+        openvino_marker = self.models.model_path(openvino_model)
+        assert openvino_marker is not None
+        self.registry.register(OpenVinoGpuProvider(openvino_marker.parent))
         self.snapshot = HardwareProbe().probe()
-        self.capabilities = build_capabilities(
-            self.snapshot,
-            self.models.all_statuses(),
-            openvino_cpu=importlib.util.find_spec("openvino") is not None,
-            installed_provider_ids=self.registry.installed_provider_ids(),
-        )
+        self.openvino_probe = OpenVinoProbe().run()
+        self._enrich_openvino_probe()
         self.planner = HardwarePlanner()
         self.last_actual_plan: GenerationPlan | None = None
+        self._rebuild_capabilities()
 
-    def refresh_models(self) -> None:
+    def _rebuild_capabilities(self) -> None:
         self.capabilities = build_capabilities(
             self.snapshot,
             self.models.all_statuses(),
             openvino_cpu=importlib.util.find_spec("openvino") is not None,
             installed_provider_ids=self.registry.installed_provider_ids(),
+            openvino_probe=self.openvino_probe,
         )
+
+    def refresh_models(self) -> None:
+        self._rebuild_capabilities()
+
+    def refresh_hardware(self) -> None:
+        self.snapshot = HardwareProbe().probe()
+        self.openvino_probe = OpenVinoProbe().run()
+        self._enrich_openvino_probe()
+        self._rebuild_capabilities()
+
+    def _enrich_openvino_probe(self) -> None:
+        if self.openvino_probe.driver_version != "unknown":
+            return
+        intel_gpu = next(
+            (device for device in self.snapshot.gpus if device.vendor == "intel"),
+            None,
+        )
+        if intel_gpu and intel_gpu.driver_version != "unknown":
+            self.openvino_probe = replace(
+                self.openvino_probe,
+                driver_version=intel_gpu.driver_version,
+            )
 
     def plan(
         self,
@@ -73,6 +100,7 @@ class CapabilityService:
         return {
             "schema_version": 1,
             "hardware": self.snapshot.to_dict(),
+            "runtime_probes": {"openvino": self.openvino_probe.to_dict()},
             "providers": [item.to_dict() for item in self.capabilities],
             "automatic_plan": automatic,
             "configured_provider": os.environ.get("EPET_GENERATION_PROVIDER", "mock"),

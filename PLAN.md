@@ -3,7 +3,7 @@
 > 文档版本：v0.4
 > 首次编写：2026-07-23
 > 最近更新：2026-07-27
-> 当前状态：Active（0.2.0 双角色离线 Alpha；Gate A 已验收；阶段 3、阶段 4 与步骤 5.4 已完成；本地 FastAPI、PostgreSQL、Redis、MinIO、确定性多帧骨骼 Mock Worker，以及桌面上传、SSE/轮询、下载、v1/v2 校验、安装和激活闭环已打通；下一步为步骤 5.5 本地多硬件生成 Provider，真实 Q 版模型、立绘确认和人物生成 Gate 仍待验证）
+> 当前状态：Active（0.2.0 双角色离线 Alpha；Gate A 已验收；阶段 3、阶段 4 与步骤 5.4 已完成；本地 FastAPI、PostgreSQL、Redis、MinIO、确定性多帧骨骼 Mock Worker，以及桌面上传、SSE/轮询、下载、v1/v2 校验、安装和激活闭环已打通；步骤 5.5 已增加生成前后 U²-NetP 前景分割和矩形卡片质量门禁；`human_avatar` 已接入 OpenVINO 18 点人体姿态、六部件语义拆分、骨骼绑定和 68 帧 Atlas `.epet 2.1.0`，真实照片验收识别到 13/18 个关键点并通过 Rust 加载器。身份一致性和猫咪语义姿态尚未通过 Gate，人物低置信点仍使用显式模板补全。下一步为 IP-Adapter/FaceID 身份条件化和猫咪关键点模型）
 > 正式支持：Windows 11 x64
 > 尽力兼容：Windows 10 22H2 x64 / ESU（不承诺跟随微软提供系统级安全支持）
 > 推荐技术路线：Tauri 2 + React/TypeScript + PixiJS + Python/FastAPI + 本地多硬件 Worker（可选云端 GPU）
@@ -1263,7 +1263,9 @@ interactive / click_through
 
 #### 步骤 5.5：本地多硬件生成 Provider
 
-> 状态：In progress（2026-07-28）。基础层已交付：核心 Provider 数据契约、`ProviderRegistry`、保持黄金包不变的 `MockProvider`、容错 `HardwareProbe`、确定性 `HardwarePlanner`、版本化模型清单/校验缓存/操作队列、FastAPI 能力与模型接口、任务实际 Provider 字段，以及桌面 CPU/GPU、模型状态、速度、不可用原因和自动/手动入口。真实 OpenVINO/CUDA/CPU 推理适配器、小模型编译探针、显存约束和跨硬件实机证据仍未完成，因此 UI 不会把这些路径标记为可用，默认开发配置继续显式使用 `mock`。
+> 状态：In progress（2026-07-28）。基础层已交付：核心 Provider 数据契约、`ProviderRegistry`、保持黄金包不变的 `MockProvider`、容错 `HardwareProbe`、确定性 `HardwarePlanner`、版本化模型清单/校验缓存/操作队列、FastAPI 能力与模型接口、任务实际 Provider 字段，以及桌面 CPU/GPU、模型状态、速度、不可用原因和自动/手动入口。`OpenVinoGpuProvider`、固定版本 SD1.5 + Q 版 LoRA 融合、隔离组件 OpenVINO FP16 导出、静态预览确认 API 与桌面确认界面已经接入，并已在 Arc 140V 完成真实 512×512 img2img 基准。CUDA/CPU 真实适配器、显存约束、真实用户照片端到端验收和跨硬件实机证据仍未完成，默认开发配置继续显式使用 `mock`。
+
+> Intel Arc 探针与 SD1.5 证据（2026-07-28）：在 Intel Arc 140V 8GB、驱动 `32.0.101.8243`、OpenVINO `2026.2.1` 上发现 `CPU/GPU/NPU`，目标 `GPU` 的内存小模型编译和推理均通过；首次独立探针编译约 `1308 ms`、推理约 `1.65 ms`。SD1.5 + Chibi LoRA 的 512×512、batch 1、img2img 冷加载约 `21.22 s`，冷次推理约 `2.40 s`，热次约 `2.31 s`，两次 PNG 字节一致；取消约 `2.02 s` 被观察到。峰值约 `6072 MB` 是宿主进程 RSS，不是 GPU 专用显存。
 
 要做什么：
 
@@ -1295,12 +1297,12 @@ interactive / click_through
 
 1. [x] 冻结 `GeneratorProvider`、`ProviderCapability`、`HardwareSnapshot`、`GenerationPlan`、错误码和 Provider 选择规则，先用纯数据单元测试覆盖，不加载真实模型。
 2. [x] 在 `services/worker/epet_worker/providers/` 实现 `base`、`registry`、`hardware_probe`、`planner` 和现有 Mock 适配器；保证 Mock 只能由开发配置显式选择。
-3. [ ] 实现 Windows 硬件探测：基础 CPU/GPU/内存与 CUDA/OpenVINO 运行时发现已完成；CUDA 显存、驱动/运行时版本、OpenVINO 设备属性和小模型探针仍待补齐。无法读取的字段已降级为 `unknown`，不会导致 Worker 崩溃。
-4. [ ] 实现 `auto`/手动选择、候选评分、探针、回退链和稳定错误；确定性优先级、手动不静默回退与基础夹具已完成，显存评分、运行探针和完整硬件夹具矩阵仍待补齐。
+3. [ ] 实现 Windows 硬件探测：CPU/GPU/内存、OpenVINO 版本/设备属性与 Intel GPU 小模型编译推理探针已完成；CUDA 显存、CUDA 驱动/运行时版本仍待补齐。无法读取的字段降级为 `unknown`，不会导致 Worker 崩溃。
+4. [ ] 实现 `auto`/手动选择、候选评分、探针、回退链和稳定错误；确定性优先级、手动不静默回退、OpenVINO 超时/失败探针与基础夹具已完成，显存评分、任务期安全回退和完整硬件夹具矩阵仍待补齐。
 5. [x] 扩展 Worker 能力快照和 FastAPI 只读能力接口，桌面创建页展示检测设备、最终 Provider、模型状态、预计速度、选择原因及手动覆盖入口。
-6. [ ] 实现版本化模型清单、按需下载、临时文件、SHA-256 校验、原子提交、缓存隔离、清理和重新下载；基础管理器、命令队列和损坏缓存测试已完成，真实模型 URL、许可与恢复集成测试仍待配置。
-7. 在 Intel Arc 140V 上完成 OpenVINO GPU Spike：导出并加载 SD1.5 FP16，验证 512×512、batch 1、img2img 的加载、峰值内存、单次耗时、取消和重复执行。
-8. 接入真实 `OpenVinoGpuProvider`，先只输出标准 Q 版立绘和质量信息；通过人工确认 Gate 后再进入现有部件拆分、68 帧 Atlas、`.epet` 打包、下载、安装和激活链路。
+6. [x] 实现版本化模型清单、按需下载、临时文件、SHA-256 校验、原子提交、缓存隔离、清理和重新下载；已固定 SD1.5 与 LoRA revision、许可、LoRA SHA-256，并完成可续传下载、LoRA 融合和四组件 OpenVINO FP16 原子导出。LoRA 训练来源未在模型卡披露，所以只批准本地技术验证，不批准发布。
+7. [x] 在 Intel Arc 140V 上完成 OpenVINO GPU Spike：Runtime、设备属性、隔离小模型、512×512 batch 1 img2img 冷加载/重复执行/确定性/取消均已实测，报告保存于 `services/worker/benchmarks/openvino-arc-140v.json`。Level Zero GPU 显存峰值仍需使用 Intel GPA/PresentMon 另行采集，不能用进程 RSS 冒充。
+8. [x] 接入真实 `OpenVinoGpuProvider`：适配器、确定性种子、静态 PNG 与诊断信息、任务取消检查、MinIO 预览、FastAPI 预览/确认接口、桌面预览校验和确认 UI 已完成；已用本地测试照片跑通 PostgreSQL、Redis、MinIO、API、OpenVINO Worker 的上传、预览、确认和两类 `.epet` 打包闭环。确认后的真实 Provider 产物会保留确认图，不再错误调用 Mock 模板重画角色；旧的已完成任务可通过重新打包接口修复。人物已增加 U²-NetP 透明前景、OpenVINO `human-pose-estimation-0001` 18 点姿态、头/躯干/双臂/双腿语义切分、关节重叠区、骨骼绑定和 68 帧 `.epet 2.1.0` Atlas，真实照片黑盒识别 13 点并通过 Rust 包加载。当前身份条件仍是分割前景 img2img 参考，不是 IP-Adapter/FaceID；SD1.5 + 风格 LoRA 不能稳定保证身份一致性，猫咪也尚无语义关键点模型，因此这两项仍不得描述成完成。
 9. 复用同一工作流语义实现 `CudaProvider`，并实现 `OpenVinoCpuProvider` 的慢速保底；分别保留独立模型格式和实机证据，不以 140V 的结果替代其他硬件验收。
 10. 完成跨硬件矩阵、长任务取消、Worker 重启、缓存损坏、回退可观测性和隐私检查；只有有实机证据的路径才在 UI 标记为“正式支持”。
 

@@ -1,7 +1,9 @@
 # Epet Local API
 
-FastAPI 是本地生成流程的入口，提供照片创建/上传/确认/删除、任务创建/查询/SSE/删除，
-以及生成包下载接口。启动时会自动创建 PostgreSQL 表和 MinIO bucket。
+FastAPI 是本地生成流程的入口，提供照片创建/上传/确认/删除、任务创建/查询/SSE/取消/
+删除、静态 Q 版预览获取与确认，以及生成包下载接口。启动时会自动创建 PostgreSQL 表
+和 MinIO bucket。真实 OpenVINO 任务在 `awaiting_portrait_confirmation` 暂停，只有
+调用 `POST /v1/generations/{job_id}/portrait/confirm` 后才会继续动画和打包。
 
 从仓库根目录启动：
 
